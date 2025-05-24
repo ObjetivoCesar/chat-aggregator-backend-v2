@@ -11,9 +11,9 @@ const app = express()
 
 // Configuración CORS específica
 const corsOptions = {
-  origin: ['https://cdpn.io', 'https://codepen.io', 'http://localhost:3000'],
+  origin: true, // Permitir todos los orígenes
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true,
   preflightContinue: false,
   optionsSuccessStatus: 204
@@ -27,16 +27,7 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginOpenerPolicy: { policy: "unsafe-none" },
   crossOriginEmbedderPolicy: false,
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      connectSrc: ["'self'", "https://cdpn.io", "https://codepen.io"],
-      frameSrc: ["'self'", "https://cdpn.io", "https://codepen.io"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
+  contentSecurityPolicy: false // Deshabilitar CSP temporalmente para pruebas
 }))
 
 // Manejo de preflight (OPTIONS)
