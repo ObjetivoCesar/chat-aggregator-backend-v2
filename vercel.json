@@ -5,11 +5,5 @@
   ],
   "routes": [
     { "src": "/(.*)", "dest": "src/server.js" }
-  ],
-  "cron": [
-    {
-      "path": "/cron/process-buffer",
-      "schedule": "* * * * *"
-    }
   ]
 } 
