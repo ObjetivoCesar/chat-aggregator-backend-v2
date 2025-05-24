@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Widget Energym Demo</title>
+  <style>
+    #chat-widget-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 350px;
+      z-index: 9999;
+      font-family: Arial, sans-serif;
+    }
+    #chat-widget-window {
+      display: none;
+      flex-direction: column;
+      height: 500px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    #chat-widget-header {
+      background: #27ae60;
+      color: #fff;
+      padding: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #chat-widget-title { font-weight: bold; }
+    #chat-widget-close { cursor: pointer; }
+    #chat-widget-messages {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      background: #f9f9f9;
+    }
+    .chat-message {
+      max-width: 80%;
+      padding: 10px 15px;
+      margin-bottom: 10px;
+      border-radius: 18px;
+      word-wrap: break-word;
+    }
+    .user-message {
+      align-self: flex-end;
+      background: #27ae60;
+      color: #fff;
+      border-bottom-right-radius: 5px;
+    }
+    .bot-message {
+      align-self: flex-start;
+      background: #e8f0fe;
+      color: #333;
+      border-bottom-left-radius: 5px;
+    }
+    #chat-widget-input-container {
+      display: flex;
+      padding: 10px;
+      border-top: 1px solid #eee;
+      background: #fff;
+    }
+    #chat-widget-input {
+      flex: 1;
+      padding: 10px 15px;
+      border: 1px solid #ddd;
+      border-radius: 20px;
+      outline: none;
+      font-size: 14px;
+    }
+    #chat-widget-send {
+      width: 40px;
+      height: 40px;
+      margin-left: 10px;
+      border-radius: 50%;
+      background: #27ae60;
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+    }
+    #chat-widget-button {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #27ae60;
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      align-self: flex-end;
+      font-size: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div id="chat-widget-container">
+    <div id="chat-widget-window">
+      <div id="chat-widget-header">
+        <span id="chat-widget-title">Energym Asistente</span>
+        <span id="chat-widget-close">&times;</span>
+      </div>
+      <div id="chat-widget-messages"></div>
+      <div id="chat-widget-input-container">
+        <input type="text" id="chat-widget-input" placeholder="Escribe un mensaje...">
+        <div id="chat-widget-send">&#9658;</div>
+      </div>
+    </div>
+    <div id="chat-widget-button">&#128172;</div>
+  </div>
+  <script>
+    const widgetConfig = {
+      apiUrl: 'https://chat-aggregator-backend-v2.vercel.app/webhook',
+      title: 'Energym Asistente',
+      primaryColor: '#27ae60',
+      welcomeMessage: '¡Hola! Soy el asistente de Energym, ¿en qué puedo ayudarte?'
+    };
+
+    // Elementos del DOM
+    const chatButton = document.getElementById('chat-widget-button');
+    const chatWindow = document.getElementById('chat-widget-window');
+    const chatClose = document.getElementById('chat-widget-close');
+    const chatMessages = document.getElementById('chat-widget-messages');
+    const chatInput = document.getElementById('chat-widget-input');
+    const chatSend = document.getElementById('chat-widget-send');
+    const chatTitle = document.getElementById('chat-widget-title');
+
+    // Personalización
+    chatTitle.textContent = widgetConfig.title;
+    chatButton.style.background = widgetConfig.primaryColor;
+    chatWindow.querySelector('#chat-widget-header').style.background = widgetConfig.primaryColor;
+    chatSend.style.background = widgetConfig.primaryColor;
+
+    // Mostrar mensaje de bienvenida
+    function addBotMessage(message) {
+      const msg = document.createElement('div');
+      msg.className = 'chat-message bot-message';
+      msg.textContent = message;
+      chatMessages.appendChild(msg);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+    function addUserMessage(message) {
+      const msg = document.createElement('div');
+      msg.className = 'chat-message user-message';
+      msg.textContent = message;
+      chatMessages.appendChild(msg);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Abrir/cerrar chat
+    chatButton.onclick = () => {
+      chatWindow.style.display = 'flex';
+      chatButton.style.display = 'none';
+    };
+    chatClose.onclick = () => {
+      chatWindow.style.display = 'none';
+      chatButton.style.display = 'flex';
+    };
+
+    // Enviar mensaje
+    chatSend.onclick = sendMessage;
+    chatInput.onkeypress = function(e) {
+      if (e.key === 'Enter') sendMessage();
+    };
+
+    function sendMessage() {
+      const message = chatInput.value.trim();
+      if (!message) return;
+      addUserMessage(message);
+      chatInput.value = '';
+      // Enviar al backend de Vercel
+      fetch(widgetConfig.apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: 'user_' + Math.random().toString(36).substring(2, 15),
+          channel: 'web',
+          type: 'text',
+          payload: { text: message }
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "received") {
+          addBotMessage('¡Mensaje recibido por el backend!');
+        } else if (data.status === "filtered") {
+          addBotMessage('Mensaje filtrado.');
+        } else {
+          addBotMessage('Respuesta: ' + JSON.stringify(data));
+        }
+      })
+      .catch(() => addBotMessage('No se pudo conectar con el servidor.'));
+    }
+
+    // Inicializar
+    addBotMessage(widgetConfig.welcomeMessage);
+  </script>
+</body>
+</html> 
