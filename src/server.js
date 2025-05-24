@@ -10,23 +10,41 @@ const redisClient = require("./config/redis")
 const app = express()
 
 // Configuración CORS específica
-app.use(cors({
+const corsOptions = {
   origin: ['https://cdpn.io', 'https://codepen.io', 'http://localhost:3000'],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  credentials: true,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+}
+
+// Aplicar CORS antes de otros middlewares
+app.use(cors(corsOptions))
+
+// Configuración de Helmet más permisiva
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: { policy: "unsafe-none" },
+  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: ["'self'", "https://cdpn.io", "https://codepen.io"],
+      frameSrc: ["'self'", "https://cdpn.io", "https://codepen.io"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
 }))
 
 // Manejo de preflight (OPTIONS)
-app.options('*', cors())
+app.options('*', cors(corsOptions))
 
 const PORT = process.env.PORT || 3000
 
 // Middleware
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-  crossOriginOpenerPolicy: { policy: "unsafe-none" }
-}))
 app.use(express.json({ limit: "50mb" }))
 app.use(express.urlencoded({ extended: true, limit: "50mb" }))
 
@@ -39,7 +57,7 @@ app.use((err, req, res, next) => {
   console.error("Error:", err)
   res.status(500).json({
     error: "Internal server error",
-    message: process.env.NODE_ENV === "development" ? err.message : "Something went wrong",
+    message: "Something went wrong"
   })
 })
 
