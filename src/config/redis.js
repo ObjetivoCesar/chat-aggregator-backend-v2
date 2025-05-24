@@ -33,7 +33,32 @@ const connectRedis = async () => {
   }
 };
 
+// Crear un wrapper para los métodos de Redis
+const redisWrapper = {
+  lLen: async (key) => {
+    return await redisClient.lLen(key);
+  },
+  lPush: async (key, value) => {
+    return await redisClient.lPush(key, value);
+  },
+  lRange: async (key, start, stop) => {
+    return await redisClient.lRange(key, start, stop);
+  },
+  exists: async (key) => {
+    return await redisClient.exists(key);
+  },
+  setEx: async (key, seconds, value) => {
+    return await redisClient.setEx(key, seconds, value);
+  },
+  del: async (key) => {
+    return await redisClient.del(key);
+  },
+  quit: async () => {
+    return await redisClient.quit();
+  }
+};
+
 module.exports = {
-  redisClient,
+  redisClient: redisWrapper,
   connectRedis
 };

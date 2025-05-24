@@ -28,6 +28,9 @@ try {
 
 const app = express()
 
+// Configurar trust proxy para rate limiting
+app.set('trust proxy', 1)
+
 // Configuración CORS específica
 const corsOptions = {
   origin: [
