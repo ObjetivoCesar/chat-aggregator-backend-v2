@@ -1,59 +1,54 @@
-const { createClient } = require("redis")
+const redis = require('redis');
 
-const MAX_RETRIES = 5
-const RETRY_DELAY = 5000 // 5 segundos
-
-const redisClient = createClient({
-  url: process.env.REDIS_URL || "redis://localhost:6379",
+// Crear cliente Redis
+const redisClient = redis.createClient({
+  url: process.env.REDIS_URL || 'redis://localhost:6379',
   socket: {
-    reconnectStrategy: (retries) => {
-      if (retries > MAX_RETRIES) {
-        console.error("❌ Max Redis reconnection attempts reached")
-        return new Error("Max reconnection attempts reached")
-      }
-      console.log(`🔄 Redis reconnection attempt ${retries}/${MAX_RETRIES}`)
-      return RETRY_DELAY
+    connectTimeout: 60000,
+    lazyConnect: true,
+  },
+  retry_strategy: (options) => {
+    if (options.error && options.error.code === 'ECONNREFUSED') {
+      console.error('Redis connection refused, retrying...');
+      return new Error('Redis connection refused');
     }
-  }
-})
-
-redisClient.on("error", (err) => {
-  console.error("❌ Redis Client Error:", err)
-})
-
-redisClient.on("connect", () => {
-  console.log("🔗 Redis Client Connected")
-})
-
-redisClient.on("ready", () => {
-  console.log("✅ Redis Client Ready")
-})
-
-redisClient.on("end", () => {
-  console.log("🔌 Redis Client Disconnected")
-})
-
-redisClient.on("reconnecting", () => {
-  console.log("🔄 Redis Client Reconnecting...")
-})
-
-// Connect to Redis
-;(async () => {
-  let retries = 0
-  while (retries < MAX_RETRIES) {
-    try {
-      await redisClient.connect()
-      break
-    } catch (error) {
-      retries++
-      console.error(`Failed to connect to Redis (attempt ${retries}/${MAX_RETRIES}):`, error)
-      if (retries === MAX_RETRIES) {
-        console.error("❌ Max Redis connection attempts reached")
-        process.exit(1)
-      }
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY))
+    if (options.total_retry_time > 1000 * 60 * 60) {
+      console.error('Redis retry time exhausted');
+      return new Error('Redis retry time exhausted');
     }
+    if (options.attempt > 10) {
+      console.error('Redis max retries reached');
+      return new Error('Redis max retries reached');
+    }
+    return Math.min(options.attempt * 100, 3000);
   }
-})()
+});
 
-module.exports = redisClient
+// Manejar eventos de conexión
+redisClient.on('connect', () => {
+  console.log('✅ Redis client connected');
+});
+
+redisClient.on('error', (err) => {
+  console.error('❌ Redis client error:', err);
+});
+
+redisClient.on('reconnecting', () => {
+  console.log('🔄 Redis client reconnecting...');
+});
+
+// Función para conectar a Redis
+const connectRedis = async () => {
+  try {
+    await redisClient.connect();
+    return true;
+  } catch (error) {
+    console.error('Failed to connect to Redis:', error);
+    return false;
+  }
+};
+
+module.exports = {
+  redisClient,
+  connectRedis
+};

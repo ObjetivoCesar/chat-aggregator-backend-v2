@@ -5,7 +5,26 @@ require("dotenv").config()
 
 const webhookRoutes = require("./routes/webhook")
 const healthRoutes = require("./routes/health")
-const redisClient = require("../config/redis")
+
+// Importar Redis de forma más robusta
+let redisClient = null;
+try {
+  console.log('📦 Intentando cargar módulo Redis...');
+  const redisConfig = require("./config/redis")
+  redisClient = redisConfig.redisClient || redisConfig;
+  console.log('✅ Módulo Redis cargado correctamente');
+  
+  // Conectar a Redis si es necesario
+  if (redisConfig.connectRedis) {
+    console.log('🔄 Intentando conectar a Redis...');
+    redisConfig.connectRedis().catch(err => {
+      console.warn('⚠️ Redis connection failed, continuing without Redis:', err.message);
+    });
+  }
+} catch (error) {
+  console.warn('⚠️ Redis module not found or failed to load, continuing without Redis:', error.message);
+  console.warn('Ruta intentada:', require.resolve('./config/redis'));
+}
 
 const app = express()
 
@@ -63,22 +82,34 @@ app.use("*", (req, res) => {
 })
 
 // Graceful shutdown
-process.on("SIGTERM", async () => {
-  console.log("SIGTERM received, shutting down gracefully")
-  await redisClient.quit()
+const gracefulShutdown = async (signal) => {
+  console.log(`${signal} received, shutting down gracefully`)
+  
+  if (redisClient) {
+    try {
+      await redisClient.quit()
+      console.log('Redis connection closed')
+    } catch (error) {
+      console.error('Error closing Redis connection:', error)
+    }
+  }
+  
   process.exit(0)
-})
+}
 
-process.on("SIGINT", async () => {
-  console.log("SIGINT received, shutting down gracefully")
-  await redisClient.quit()
-  process.exit(0)
-})
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"))
+process.on("SIGINT", () => gracefulShutdown("SIGINT"))
 
 app.listen(PORT, () => {
   console.log(`🚀 Chat Aggregator Backend running on port ${PORT}`)
   console.log(`📡 Webhook endpoint: http://localhost:${PORT}/webhook`)
   console.log(`❤️  Health check: http://localhost:${PORT}/health`)
+  
+  if (redisClient) {
+    console.log('✅ Redis client loaded')
+  } else {
+    console.log('⚠️  Running without Redis')
+  }
 })
 
 module.exports = app
