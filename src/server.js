@@ -8,28 +8,25 @@ const healthRoutes = require("./routes/health")
 
 // Importar Redis de forma más robusta
 let redisClient = null;
+let redisConfig = null;
 try {
-  console.log('📦 Intentando cargar módulo Redis...');
-  const redisConfig = require("./config/redis")
-  redisClient = redisConfig.redisClient || redisConfig;
-  console.log('✅ Módulo Redis cargado correctamente');
+  console.log("📦 Intentando cargar módulo Redis...");
+  redisConfig = require("../config/redis");
+  redisClient = redisConfig.redisClient;
+  console.log("✅ Módulo Redis cargado correctamente");
   
-  // Conectar a Redis si es necesario
-  if (redisConfig.connectRedis) {
-    console.log('🔄 Intentando conectar a Redis...');
-    redisConfig.connectRedis().catch(err => {
-      console.warn('⚠️ Redis connection failed, continuing without Redis:', err.message);
-    });
-  }
+  // Conectar a Redis
+  console.log("🔄 Intentando conectar a Redis...");
+  redisConfig.connectRedis().then(() => {
+    console.log("✅ Redis client connected");
+  }).catch(err => {
+    console.warn('❌ Redis connection failed, continuing without Redis:', err.message);
+  });
 } catch (error) {
-  console.warn('⚠️ Redis module not found or failed to load, continuing without Redis:', error.message);
-  console.warn('Ruta intentada:', require.resolve('./config/redis'));
+  console.warn('❌ Redis module not found or failed to load, continuing without Redis:', error.message);
 }
 
 const app = express()
-
-// Configurar trust proxy para rate limiting
-app.set('trust proxy', 1)
 
 // Configuración CORS específica
 const corsOptions = {
@@ -61,9 +58,6 @@ app.use(helmet({
 app.options('*', cors(corsOptions))
 
 const PORT = process.env.PORT || 3000
-const BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://chat-aggregator-backend-v2.onrender.com'
-  : `http://localhost:${PORT}`
 
 // Middleware
 app.use(express.json({ limit: "50mb" }))
@@ -91,12 +85,14 @@ app.use("*", (req, res) => {
 const gracefulShutdown = async (signal) => {
   console.log(`${signal} received, shutting down gracefully`)
   
-  if (redisClient) {
+  if (redisClient && redisConfig) {
     try {
-      await redisClient.quit()
-      console.log('Redis connection closed')
+      if (redisClient.isOpen) {
+        await redisClient.quit()
+        console.log('✅ Redis connection closed')
+      }
     } catch (error) {
-      console.error('Error closing Redis connection:', error)
+      console.error('❌ Error closing Redis connection:', error)
     }
   }
   
@@ -108,8 +104,8 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"))
 
 app.listen(PORT, () => {
   console.log(`🚀 Chat Aggregator Backend running on port ${PORT}`)
-  console.log(`📡 Webhook endpoint: ${BASE_URL}/webhook`)
-  console.log(`❤️  Health check: ${BASE_URL}/health`)
+  console.log(`📡 Webhook endpoint: http://localhost:${PORT}/webhook`)
+  console.log(`❤️  Health check: http://localhost:${PORT}/health`)
   
   if (redisClient) {
     console.log('✅ Redis client loaded')

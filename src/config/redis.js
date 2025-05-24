@@ -1,6 +1,6 @@
 const redis = require('redis');
 
-// Crear cliente Redis
+// Crear cliente Redis con configuración para v4.6.10
 const redisClient = redis.createClient({
   url: process.env.REDIS_URL || 'redis://localhost:6379',
   socket: {
@@ -9,56 +9,50 @@ const redisClient = redis.createClient({
   }
 });
 
-// Manejar eventos de conexión
+// Event listeners
+redisClient.on('error', (err) => {
+  console.error('Redis Client Error:', err);
+});
+
 redisClient.on('connect', () => {
   console.log('✅ Redis client connected');
 });
 
-redisClient.on('error', (err) => {
-  console.error('❌ Redis client error:', err);
-});
-
 redisClient.on('reconnecting', () => {
-  console.log('🔄 Redis client reconnecting...');
+  console.log('🔄 Reconnecting to Redis...');
 });
 
-// Función para conectar a Redis
+redisClient.on('ready', () => {
+  console.log('🚀 Redis client ready');
+});
+
+// Conectar al cliente
 const connectRedis = async () => {
   try {
-    await redisClient.connect();
-    return true;
+    if (!redisClient.isOpen) {
+      await redisClient.connect();
+    }
   } catch (error) {
     console.error('Failed to connect to Redis:', error);
-    return false;
+    throw error;
   }
 };
 
-// Crear un wrapper para los métodos de Redis
-const redisWrapper = {
-  lLen: async (key) => {
-    return await redisClient.lLen(key);
-  },
-  lPush: async (key, value) => {
-    return await redisClient.lPush(key, value);
-  },
-  lRange: async (key, start, stop) => {
-    return await redisClient.lRange(key, start, stop);
-  },
-  exists: async (key) => {
-    return await redisClient.exists(key);
-  },
-  setEx: async (key, seconds, value) => {
-    return await redisClient.setEx(key, seconds, value);
-  },
-  del: async (key) => {
-    return await redisClient.del(key);
-  },
-  quit: async () => {
-    return await redisClient.quit();
+// En Redis v4.6.10, los métodos están disponibles directamente en el cliente
+// No necesitamos wrapper, solo exportamos el cliente directamente
+const pingRedis = async () => {
+  try {
+    const response = await redisClient.ping();
+    console.log('Redis ping response:', response);
+    return response;
+  } catch (error) {
+    console.error('Redis ping failed:', error);
+    throw error;
   }
 };
 
 module.exports = {
-  redisClient: redisWrapper,
-  connectRedis
+  redisClient,
+  connectRedis,
+  pingRedis
 };
