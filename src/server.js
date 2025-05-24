@@ -6,6 +6,7 @@ require("dotenv").config()
 const webhookRoutes = require("./routes/webhook")
 const healthRoutes = require("./routes/health")
 const redisClient = require("./config/redis")
+const cronRoutes = require("./routes/cron")
 
 const app = express()
 
@@ -29,6 +30,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }))
 // Routes
 app.use("/webhook", webhookRoutes)
 app.use("/health", healthRoutes)
+app.use("/cron", cronRoutes)
 
 // Error handling middleware
 app.use((err, req, res, next) => {
