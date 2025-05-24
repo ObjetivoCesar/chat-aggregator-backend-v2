@@ -9,11 +9,12 @@ const redisClient = require("./config/redis")
 
 const app = express()
 
-// Configuración CORS permisiva para pruebas
+// Configuración CORS específica
 app.use(cors({
-  origin: '*',
+  origin: ['https://cdpn.io', 'https://codepen.io', 'http://localhost:3000'],
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }))
 
 // Manejo de preflight (OPTIONS)
@@ -22,7 +23,10 @@ app.options('*', cors())
 const PORT = process.env.PORT || 3000
 
 // Middleware
-app.use(helmet())
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: { policy: "unsafe-none" }
+}))
 app.use(express.json({ limit: "50mb" }))
 app.use(express.urlencoded({ extended: true, limit: "50mb" }))
 

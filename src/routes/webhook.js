@@ -2,8 +2,27 @@ const express = require("express")
 const router = express.Router()
 const messageProcessor = require("../services/messageProcessor")
 const messageBuffer = require("../services/messageBuffer")
+const rateLimit = require("express-rate-limit")
 
-router.post("/", async (req, res) => {
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 100, // límite de 100 peticiones por ventana
+  message: "Too many requests from this IP, please try again later"
+})
+
+// Validación de payload
+const validatePayload = (req, res, next) => {
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return res.status(400).json({ error: "Empty payload" })
+  }
+  if (JSON.stringify(req.body).length > 1024 * 1024) { // 1MB
+    return res.status(413).json({ error: "Payload too large" })
+  }
+  next()
+}
+
+router.post("/", limiter, validatePayload, async (req, res) => {
   try {
     console.log("📨 Webhook received:", JSON.stringify(req.body, null, 2))
     // Procesar el mensaje según la plataforma
