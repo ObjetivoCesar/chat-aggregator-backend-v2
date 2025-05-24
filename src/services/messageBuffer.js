@@ -110,7 +110,7 @@ class MessageBuffer {
       }
 
       // Combinar mensajes (reverse porque Redis LPUSH invierte el orden)
-      const combinedText = messages.reverse().join(" ")
+      let combinedText = messages.reverse().join(" ")
       
       // Verificar longitud total
       if (combinedText.length > this.MAX_MESSAGE_LENGTH) {

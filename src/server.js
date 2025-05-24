@@ -58,6 +58,9 @@ app.use(helmet({
 app.options('*', cors(corsOptions))
 
 const PORT = process.env.PORT || 3000
+const BASE_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://chat-aggregator-backend-v2.onrender.com'
+  : `http://localhost:${PORT}`
 
 // Middleware
 app.use(express.json({ limit: "50mb" }))
@@ -102,8 +105,8 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"))
 
 app.listen(PORT, () => {
   console.log(`🚀 Chat Aggregator Backend running on port ${PORT}`)
-  console.log(`📡 Webhook endpoint: http://localhost:${PORT}/webhook`)
-  console.log(`❤️  Health check: http://localhost:${PORT}/health`)
+  console.log(`📡 Webhook endpoint: ${BASE_URL}/webhook`)
+  console.log(`❤️  Health check: ${BASE_URL}/health`)
   
   if (redisClient) {
     console.log('✅ Redis client loaded')

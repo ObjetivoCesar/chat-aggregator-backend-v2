@@ -116,7 +116,7 @@
   </div>
   <script>
     const widgetConfig = {
-      apiUrl: 'https://chat-aggregator-backend-v2.vercel.app/webhook',
+      apiUrl: 'https://chat-aggregator-backend-v2.onrender.com/webhook',
       title: 'Energym Asistente',
       primaryColor: '#27ae60',
       welcomeMessage: '¡Hola! Soy el asistente de Energym, ¿en qué puedo ayudarte?'
@@ -174,7 +174,7 @@
       if (!message) return;
       addUserMessage(message);
       chatInput.value = '';
-      // Enviar al backend de Vercel
+      // Enviar al backend
       fetch(widgetConfig.apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

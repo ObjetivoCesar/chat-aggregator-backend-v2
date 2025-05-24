@@ -6,21 +6,6 @@ const redisClient = redis.createClient({
   socket: {
     connectTimeout: 60000,
     lazyConnect: true,
-  },
-  retry_strategy: (options) => {
-    if (options.error && options.error.code === 'ECONNREFUSED') {
-      console.error('Redis connection refused, retrying...');
-      return new Error('Redis connection refused');
-    }
-    if (options.total_retry_time > 1000 * 60 * 60) {
-      console.error('Redis retry time exhausted');
-      return new Error('Redis retry time exhausted');
-    }
-    if (options.attempt > 10) {
-      console.error('Redis max retries reached');
-      return new Error('Redis max retries reached');
-    }
-    return Math.min(options.attempt * 100, 3000);
   }
 });
 
