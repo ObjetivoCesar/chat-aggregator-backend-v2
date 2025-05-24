@@ -5,13 +5,18 @@ require("dotenv").config()
 
 const webhookRoutes = require("./routes/webhook")
 const healthRoutes = require("./routes/health")
-const redisClient = require("./config/redis")
+const redisClient = require("../config/redis")
 
 const app = express()
 
 // Configuración CORS específica
 const corsOptions = {
-  origin: true, // Permitir todos los orígenes
+  origin: [
+    'https://cdpn.io', 
+    'https://codepen.io', 
+    'http://localhost:3000',
+    'https://chat-aggregator-backend-v2.onrender.com'
+  ],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true,
