@@ -28,8 +28,18 @@ class MessageProcessor {
       let isFirstAudio = false
       let timerKey = `${channel}_${user_id}`
 
+      // Log para ver el payload recibido
+      console.log("Payload recibido en processIncomingMessage:", JSON.stringify(payload, null, 2));
+
       // Si es audio, transcribir con Whisper
       if (type === "audio" && (content || payload.audioBuffer)) {
+        console.log("Entrando al bloque de procesamiento de audio. content:", content, "audioBuffer existe:", !!payload.audioBuffer);
+        if (payload.audioBuffer) {
+          console.log("Tipo de audioBuffer:", typeof payload.audioBuffer, "Longitud:", payload.audioBuffer.length, "Es Buffer:", Buffer.isBuffer(payload.audioBuffer));
+          if (payload.audioBuffer.data) {
+            console.log("audioBuffer.data es Array:", Array.isArray(payload.audioBuffer.data), "Longitud:", payload.audioBuffer.data.length);
+          }
+        }
         console.log(`🎵 Processing audio message from ${channel}:${user_id}`)
         try {
           let audioUrl = content;
