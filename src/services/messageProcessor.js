@@ -3,6 +3,7 @@ const platformDetector = require("./platformDetector")
 const messageBuffer = require("./messageBuffer")
 const fs = require("fs");
 const path = require("path");
+const ffmpeg = require("fluent-ffmpeg");
 
 class MessageProcessor {
   async processIncomingMessage(payload) {
@@ -32,19 +33,31 @@ class MessageProcessor {
         console.log(`🎵 Processing audio message from ${channel}:${user_id}`)
         try {
           let audioUrl = content;
-          // Si viene como buffer (desde el widget), guardarlo temporalmente y obtener la ruta local
+          let tempFile, mp3File;
+          // Si viene como buffer (desde el widget), guardarlo temporalmente y convertirlo a mp3
           if (payload.audioBuffer) {
             const tempDir = path.join(__dirname, "../../tmp");
             if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
-            const tempFile = path.join(tempDir, `${user_id}_${Date.now()}.mp3`);
+            const ext = payload.audioOriginalName ? path.extname(payload.audioOriginalName) : '.ogg';
+            tempFile = path.join(tempDir, `${user_id}_${Date.now()}${ext}`);
             fs.writeFileSync(tempFile, Buffer.from(payload.audioBuffer.data));
-            audioUrl = tempFile;
+            // Convertir a mp3
+            mp3File = tempFile.replace(/\.[^/.]+$/, ".mp3");
+            await new Promise((resolve, reject) => {
+              ffmpeg(tempFile)
+                .toFormat('mp3')
+                .on('end', resolve)
+                .on('error', reject)
+                .save(mp3File);
+            });
+            audioUrl = mp3File;
           }
           processedContent = await whisperService.transcribeAudio(audioUrl);
           console.log(`📝 Audio transcribed: "${processedContent}"`);
-          // Eliminar archivo temporal si se creó
+          // Eliminar archivos temporales si se crearon
           if (payload.audioBuffer) {
-            fs.unlinkSync(audioUrl);
+            if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+            if (fs.existsSync(mp3File)) fs.unlinkSync(mp3File);
           }
           // Verificar si es el primer mensaje de audio (no hay temporizador activo)
           if (!messageBuffer.timers.has(timerKey)) {
