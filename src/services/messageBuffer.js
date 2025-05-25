@@ -108,25 +108,11 @@ class MessageBuffer {
 
       const concatenated = messageParts.join('\n');
 
-      // Crear payload más detallado para Make.com
+      // Crear payload simplificado para Make.com
       const payload = {
         user_id: userId,
         platform: channel,
-        message_concatenado: concatenated,
-        metadata: {
-          total_messages: messages.length,
-          first_message_time: messages[0].timestamp,
-          last_message_time: messages[messages.length - 1].timestamp,
-          message_types: {
-            text: messages.filter(m => m.original_type === 'text').length,
-            audio: messages.filter(m => m.original_type === 'audio').length
-          },
-          messages: messages.map(m => ({
-            type: m.original_type,
-            content: m.content,
-            timestamp: m.timestamp
-          }))
-        }
+        message_concatenado: concatenated
       };
 
       try {
