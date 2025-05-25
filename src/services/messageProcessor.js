@@ -39,17 +39,21 @@ class MessageProcessor {
           let audioPath = content;
           if (payload.audioFilePath) {
             audioPath = payload.audioFilePath;
-            // Convertir a mp3
-            mp3File = audioPath.replace(/\.[^/.]+$/, ".mp3");
-            await new Promise((resolve, reject) => {
-              ffmpeg(audioPath)
-                .output(mp3File)
-                .audioCodec('libmp3lame')
-                .on('end', resolve)
-                .on('error', reject)
-                .run();
-            });
-            audioPath = mp3File;
+            const ext = path.extname(audioPath).toLowerCase();
+            if (ext !== '.mp3') {
+              mp3File = audioPath.replace(/\.[^/.]+$/, ".mp3");
+              await new Promise((resolve, reject) => {
+                ffmpeg(audioPath)
+                  .output(mp3File)
+                  .audioCodec('libmp3lame')
+                  .on('end', resolve)
+                  .on('error', reject)
+                  .run();
+              });
+              audioPath = mp3File;
+            } else {
+              mp3File = null; // No se crea archivo temporal mp3
+            }
           }
           console.log("Enviando a Whisper:", audioPath);
           processedContent = await whisperService.transcribeAudio(audioPath);
@@ -57,7 +61,7 @@ class MessageProcessor {
           // Limpiar archivos temporales si se crearon
           if (payload.audioFilePath) {
             if (fs.existsSync(payload.audioFilePath)) fs.unlinkSync(payload.audioFilePath);
-            if (fs.existsSync(mp3File)) fs.unlinkSync(mp3File);
+            if (mp3File && fs.existsSync(mp3File)) fs.unlinkSync(mp3File);
           }
           // Verificar si es el primer mensaje de audio (no hay temporizador activo)
           if (!messageBuffer.timers.has(timerKey)) {
