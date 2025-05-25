@@ -31,13 +31,19 @@ class MessageBuffer {
 
       // Programar flush solo si no existe temporizador
       const timerKey = `${message.channel}_${message.user_id}`;
+      
+      // Si es audio y no está transcrito, esperar a que se complete la transcripción
+      if (message.original_type === "audio" && !message.transcription_done) {
+        console.log("⏳ Esperando transcripción de audio antes de iniciar temporizador");
+        return true;
+      }
+
+      // Si no hay temporizador activo, iniciar uno nuevo
       if (!this.timers.has(timerKey)) {
-        // Si es audio y no está transcrito, el temporizador se programa después de la transcripción
-        if (message.original_type === "audio" && !message.transcription_done) {
-          // El messageProcessor debe llamar a startFlushTimer después de la transcripción
-          return true;
-        }
+        console.log(`⏰ Iniciando nuevo temporizador para ${timerKey}`);
         this.startFlushTimer(timerKey, message.channel, message.user_id);
+      } else {
+        console.log(`⏰ Temporizador existente para ${timerKey}, mensaje agregado al buffer`);
       }
 
       return true;
@@ -50,6 +56,13 @@ class MessageBuffer {
   // Llamar esto después de la transcripción de audio
   startFlushTimer(timerKey, channel, userId) {
     console.log(`⏰ Scheduling flush for ${timerKey} in ${this.flushInterval}ms`);
+    
+    // Limpiar temporizador existente si hay uno
+    if (this.timers.has(timerKey)) {
+      clearTimeout(this.timers.get(timerKey));
+      this.timers.delete(timerKey);
+    }
+    
     const timer = setTimeout(async () => {
       try {
         await this.flushMessages(channel, userId);
@@ -59,6 +72,7 @@ class MessageBuffer {
         this.timers.delete(timerKey);
       }
     }, this.flushInterval);
+    
     this.timers.set(timerKey, timer);
   }
 
@@ -83,26 +97,46 @@ class MessageBuffer {
         }
       }).filter(Boolean);
 
-      // Concatenar mensajes (texto y transcripciones)
-      const concatenated = messages.map(m => m.content).join(" ");
+      // Ordenar mensajes por timestamp
+      messages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-      // Payload a Make
+      // Crear mensaje concatenado con formato claro
+      const messageParts = messages.map((m, index) => {
+        const prefix = m.original_type === 'audio' ? '[Audio] ' : '';
+        return `${prefix}${m.content}`;
+      });
+
+      const concatenated = messageParts.join('\n');
+
+      // Crear payload más detallado para Make.com
       const payload = {
         user_id: userId,
         platform: channel,
         message_concatenado: concatenated,
         metadata: {
-          count: messages.length,
-          timestamps: messages.map(m => m.timestamp),
-          original_types: messages.map(m => m.original_type),
+          total_messages: messages.length,
+          first_message_time: messages[0].timestamp,
+          last_message_time: messages[messages.length - 1].timestamp,
+          message_types: {
+            text: messages.filter(m => m.original_type === 'text').length,
+            audio: messages.filter(m => m.original_type === 'audio').length
+          },
+          messages: messages.map(m => ({
+            type: m.original_type,
+            content: m.content,
+            timestamp: m.timestamp
+          }))
         }
       };
 
       try {
+        console.log("📤 Sending to Make.com:", JSON.stringify(payload, null, 2));
         await makeWebhook.sendToMake(payload);
-        console.log("✅ Payload sent to Make:", payload);
+        console.log("✅ Successfully sent to Make.com (200)");
+        console.log("📄 Make.com response: Accepted");
       } catch (error) {
         console.error("❌ Error sending payload to Make:", error.message);
+        throw error;
       }
 
       // Limpiar buffer

@@ -100,6 +100,46 @@
       align-self: flex-end;
       font-size: 24px;
     }
+    #chat-widget-audio-label {
+      margin-left: 5px;
+      font-size: 12px;
+      color: #888;
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .audio-selected {
+      color: #27ae60 !important;
+      font-weight: bold;
+    }
+    .audio-loading {
+      color: #f39c12 !important;
+      animation: pulse 1.5s infinite;
+    }
+    .audio-sent {
+      color: #27ae60 !important;
+      opacity: 0.7;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+    .audio-status {
+      display: inline-block;
+      margin-left: 5px;
+      font-size: 12px;
+    }
+    .audio-status.loading {
+      color: #f39c12;
+    }
+    .audio-status.success {
+      color: #27ae60;
+    }
+    .audio-status.error {
+      color: #e74c3c;
+    }
   </style>
 </head>
 <body>
@@ -143,17 +183,43 @@
     chatSend.style.background = widgetConfig.primaryColor;
 
     // Mostrar mensaje de bienvenida
-    function addBotMessage(message) {
+    function addBotMessage(message, type = 'info') {
       const msg = document.createElement('div');
       msg.className = 'chat-message bot-message';
-      msg.textContent = message;
+      
+      if (type === 'loading') {
+        const loadingIcon = document.createElement('span');
+        loadingIcon.textContent = '⏳ ';
+        msg.appendChild(loadingIcon);
+      } else if (type === 'success') {
+        const successIcon = document.createElement('span');
+        successIcon.textContent = '✅ ';
+        msg.appendChild(successIcon);
+      } else if (type === 'error') {
+        const errorIcon = document.createElement('span');
+        errorIcon.textContent = '❌ ';
+        msg.appendChild(errorIcon);
+      }
+      
+      const textNode = document.createTextNode(message);
+      msg.appendChild(textNode);
+      
       chatMessages.appendChild(msg);
       chatMessages.scrollTop = chatMessages.scrollHeight;
     }
-    function addUserMessage(message) {
+    function addUserMessage(message, isAudio = false) {
       const msg = document.createElement('div');
       msg.className = 'chat-message user-message';
-      msg.textContent = message;
+      
+      if (isAudio) {
+        const audioIcon = document.createElement('span');
+        audioIcon.textContent = '🎵 ';
+        msg.appendChild(audioIcon);
+      }
+      
+      const textNode = document.createTextNode(message);
+      msg.appendChild(textNode);
+      
       chatMessages.appendChild(msg);
       chatMessages.scrollTop = chatMessages.scrollHeight;
     }
@@ -180,8 +246,10 @@
     audioInput.onchange = function() {
       if (audioInput.files.length > 0) {
         audioLabel.textContent = audioInput.files[0].name;
+        audioLabel.classList.add('audio-selected');
       } else {
         audioLabel.textContent = '';
+        audioLabel.classList.remove('audio-selected');
       }
     };
 
@@ -189,11 +257,20 @@
       const message = chatInput.value.trim();
       const audioFile = audioInput.files[0];
       const userId = 'user_' + Math.random().toString(36).substring(2, 15);
+      
+      // Si no hay mensaje ni audio, no hacer nada
       if (!message && !audioFile) return;
-      if (message) addUserMessage(message);
+      
+      // Mostrar mensaje del usuario
+      if (message) {
+        addUserMessage(message);
+      }
+      
+      // Limpiar input de texto
       chatInput.value = '';
-      // Enviar texto
-      if (message && !audioFile) {
+      
+      // Enviar texto si existe
+      if (message) {
         fetch(widgetConfig.apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -207,23 +284,33 @@
         .then(res => res.json())
         .then(data => {
           if (data.status === "received") {
-            addBotMessage('¡Mensaje recibido por el backend!');
+            addBotMessage('¡Mensaje recibido por el backend!', 'success');
           } else if (data.status === "filtered") {
-            addBotMessage('Mensaje filtrado.');
+            addBotMessage('Mensaje filtrado.', 'error');
           } else {
-            addBotMessage('Respuesta: ' + JSON.stringify(data));
+            addBotMessage('Respuesta: ' + JSON.stringify(data), 'info');
           }
         })
-        .catch(() => addBotMessage('No se pudo conectar con el servidor.'));
+        .catch(() => addBotMessage('No se pudo conectar con el servidor.', 'error'));
       }
-      // Enviar audio
+      
+      // Enviar audio si existe
       if (audioFile) {
         const formData = new FormData();
         formData.append('user_id', userId);
         formData.append('channel', 'web');
         formData.append('type', 'audio');
         formData.append('audio', audioFile);
-        addUserMessage('[Audio enviado: ' + audioFile.name + ']');
+        
+        // Mostrar feedback visual de envío
+        addUserMessage('Enviando audio: ' + audioFile.name, true);
+        addBotMessage('Procesando audio...', 'loading');
+        
+        // Actualizar estado visual del label
+        audioLabel.classList.remove('audio-selected');
+        audioLabel.classList.add('audio-loading');
+        audioLabel.textContent = 'Enviando...';
+        
         fetch(widgetConfig.apiUrl, {
           method: 'POST',
           body: formData
@@ -231,16 +318,22 @@
         .then(res => res.json())
         .then(data => {
           if (data.status === "received") {
-            addBotMessage('¡Audio recibido por el backend!');
+            addBotMessage('¡Audio recibido y procesado correctamente!', 'success');
           } else if (data.status === "filtered") {
-            addBotMessage('Audio filtrado.');
+            addBotMessage('Audio filtrado.', 'error');
           } else {
-            addBotMessage('Respuesta: ' + JSON.stringify(data));
+            addBotMessage('Respuesta: ' + JSON.stringify(data), 'info');
           }
         })
-        .catch(() => addBotMessage('No se pudo conectar con el servidor.'));
-        audioInput.value = '';
-        audioLabel.textContent = '';
+        .catch(() => {
+          addBotMessage('No se pudo conectar con el servidor.', 'error');
+        })
+        .finally(() => {
+          // Limpiar input de audio y estados visuales
+          audioInput.value = '';
+          audioLabel.textContent = '';
+          audioLabel.classList.remove('audio-loading');
+        });
       }
     }
 
