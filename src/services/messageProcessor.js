@@ -41,17 +41,17 @@ class MessageProcessor {
             const ext = payload.audioOriginalName ? path.extname(payload.audioOriginalName) : '.ogg';
             tempFile = path.join(tempDir, `${user_id}_${Date.now()}${ext}`);
             fs.writeFileSync(tempFile, Buffer.from(payload.audioBuffer.data));
+            if (fs.existsSync(tempFile)) {
+              console.log("Archivo temporal guardado en:", tempFile, "Tamaño:", fs.statSync(tempFile).size);
+            } else {
+              console.error("Archivo temporal NO se guardó correctamente:", tempFile);
+            }
             // Convertir a mp3
             mp3File = tempFile.replace(/\.[^/.]+$/, ".mp3");
-            await new Promise((resolve, reject) => {
-              ffmpeg(tempFile)
-                .toFormat('mp3')
-                .on('end', resolve)
-                .on('error', reject)
-                .save(mp3File);
-            });
             audioUrl = mp3File;
+            console.log("Archivo mp3 de destino:", mp3File);
           }
+          console.log("Enviando a Whisper:", audioUrl);
           processedContent = await whisperService.transcribeAudio(audioUrl);
           console.log(`📝 Audio transcribed: "${processedContent}"`);
           // Eliminar archivos temporales si se crearon
