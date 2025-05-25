@@ -113,6 +113,7 @@
       <div id="chat-widget-input-container">
         <input type="text" id="chat-widget-input" placeholder="Escribe un mensaje...">
         <input type="file" id="chat-widget-audio" accept="audio/*" style="margin-left:5px;">
+        <span id="chat-widget-audio-label" style="margin-left:5px;font-size:12px;color:#888;"></span>
         <div id="chat-widget-send">&#9658;</div>
       </div>
     </div>
@@ -173,9 +174,19 @@
       if (e.key === 'Enter') sendMessage();
     };
 
+    // Mostrar nombre del archivo de audio seleccionado
+    const audioInput = document.getElementById('chat-widget-audio');
+    const audioLabel = document.getElementById('chat-widget-audio-label');
+    audioInput.onchange = function() {
+      if (audioInput.files.length > 0) {
+        audioLabel.textContent = audioInput.files[0].name;
+      } else {
+        audioLabel.textContent = '';
+      }
+    };
+
     function sendMessage() {
       const message = chatInput.value.trim();
-      const audioInput = document.getElementById('chat-widget-audio');
       const audioFile = audioInput.files[0];
       const userId = 'user_' + Math.random().toString(36).substring(2, 15);
       if (!message && !audioFile) return;
@@ -212,6 +223,7 @@
         formData.append('channel', 'web');
         formData.append('type', 'audio');
         formData.append('audio', audioFile);
+        addUserMessage('[Audio enviado: ' + audioFile.name + ']');
         fetch(widgetConfig.apiUrl, {
           method: 'POST',
           body: formData
@@ -228,6 +240,7 @@
         })
         .catch(() => addBotMessage('No se pudo conectar con el servidor.'));
         audioInput.value = '';
+        audioLabel.textContent = '';
       }
     }
 
