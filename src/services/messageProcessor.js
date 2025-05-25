@@ -1,5 +1,6 @@
 const whisperService = require("./whisperService")
 const platformDetector = require("./platformDetector")
+const messageBuffer = require("./messageBuffer")
 
 class MessageProcessor {
   async processIncomingMessage(payload) {
@@ -21,6 +22,8 @@ class MessageProcessor {
       }
 
       let processedContent = content
+      let isFirstAudio = false
+      let timerKey = `${channel}_${user_id}`
 
       // Si es audio, transcribir con Whisper
       if (type === "audio" && content) {
@@ -28,20 +31,32 @@ class MessageProcessor {
         try {
           processedContent = await whisperService.transcribeAudio(content)
           console.log(`📝 Audio transcribed: "${processedContent}"`)
+          // Verificar si es el primer mensaje de audio (no hay temporizador activo)
+          if (!messageBuffer.timers.has(timerKey)) {
+            isFirstAudio = true
+          }
         } catch (error) {
           console.error("❌ Audio transcription failed:", error)
           processedContent = "[Audio transcription failed]"
         }
       }
 
-      return {
+      const processedMessage = {
         user_id,
         channel,
         type: type === "audio" ? "audio_transcribed" : type,
         content: processedContent,
         timestamp: new Date().toISOString(),
         original_type: type,
+        transcription_done: type === "audio"
       }
+
+      // Si es el primer audio, programa el temporizador después de la transcripción
+      if (isFirstAudio) {
+        messageBuffer.startFlushTimer(timerKey, channel, user_id)
+      }
+
+      return processedMessage
     } catch (error) {
       console.error("❌ Error processing message:", error)
       throw error

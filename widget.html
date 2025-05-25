@@ -71,6 +71,9 @@
       outline: none;
       font-size: 14px;
     }
+    #chat-widget-audio {
+      margin-left: 5px;
+    }
     #chat-widget-send {
       width: 40px;
       height: 40px;
@@ -109,6 +112,7 @@
       <div id="chat-widget-messages"></div>
       <div id="chat-widget-input-container">
         <input type="text" id="chat-widget-input" placeholder="Escribe un mensaje...">
+        <input type="file" id="chat-widget-audio" accept="audio/*" style="margin-left:5px;">
         <div id="chat-widget-send">&#9658;</div>
       </div>
     </div>
@@ -171,31 +175,60 @@
 
     function sendMessage() {
       const message = chatInput.value.trim();
-      if (!message) return;
-      addUserMessage(message);
+      const audioInput = document.getElementById('chat-widget-audio');
+      const audioFile = audioInput.files[0];
+      const userId = 'user_' + Math.random().toString(36).substring(2, 15);
+      if (!message && !audioFile) return;
+      if (message) addUserMessage(message);
       chatInput.value = '';
-      // Enviar al backend
-      fetch(widgetConfig.apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: 'user_' + Math.random().toString(36).substring(2, 15),
-          channel: 'web',
-          type: 'text',
-          payload: { text: message }
+      // Enviar texto
+      if (message && !audioFile) {
+        fetch(widgetConfig.apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: userId,
+            channel: 'web',
+            type: 'text',
+            payload: { text: message }
+          })
         })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === "received") {
-          addBotMessage('¡Mensaje recibido por el backend!');
-        } else if (data.status === "filtered") {
-          addBotMessage('Mensaje filtrado.');
-        } else {
-          addBotMessage('Respuesta: ' + JSON.stringify(data));
-        }
-      })
-      .catch(() => addBotMessage('No se pudo conectar con el servidor.'));
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "received") {
+            addBotMessage('¡Mensaje recibido por el backend!');
+          } else if (data.status === "filtered") {
+            addBotMessage('Mensaje filtrado.');
+          } else {
+            addBotMessage('Respuesta: ' + JSON.stringify(data));
+          }
+        })
+        .catch(() => addBotMessage('No se pudo conectar con el servidor.'));
+      }
+      // Enviar audio
+      if (audioFile) {
+        const formData = new FormData();
+        formData.append('user_id', userId);
+        formData.append('channel', 'web');
+        formData.append('type', 'audio');
+        formData.append('audio', audioFile);
+        fetch(widgetConfig.apiUrl, {
+          method: 'POST',
+          body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "received") {
+            addBotMessage('¡Audio recibido por el backend!');
+          } else if (data.status === "filtered") {
+            addBotMessage('Audio filtrado.');
+          } else {
+            addBotMessage('Respuesta: ' + JSON.stringify(data));
+          }
+        })
+        .catch(() => addBotMessage('No se pudo conectar con el servidor.'));
+        audioInput.value = '';
+      }
     }
 
     // Inicializar
