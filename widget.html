@@ -253,10 +253,16 @@
       }
     };
 
+    // Generar o recuperar user_id persistente
+    let userId = localStorage.getItem('chat_widget_user_id');
+    if (!userId) {
+      userId = 'user_' + Math.random().toString(36).substring(2, 15);
+      localStorage.setItem('chat_widget_user_id', userId);
+    }
+
     function sendMessage() {
       const message = chatInput.value.trim();
       const audioFile = audioInput.files[0];
-      const userId = 'user_' + Math.random().toString(36).substring(2, 15);
       
       // Si no hay mensaje ni audio, no hacer nada
       if (!message && !audioFile) return;
@@ -264,6 +270,8 @@
       // Mostrar mensaje del usuario
       if (message) {
         addUserMessage(message);
+        // Mostrar 'escribiendo...' como mensaje del bot
+        addBotMessage('escribiendo...', 'loading');
       }
       
       // Limpiar input de texto
@@ -281,17 +289,34 @@
             payload: { text: message }
           })
         })
-        .then(res => res.json())
-        .then(data => {
-          if (data.status === "received") {
-            addBotMessage('¡Mensaje recibido por el backend!', 'success');
-          } else if (data.status === "filtered") {
-            addBotMessage('Mensaje filtrado.', 'error');
-          } else {
-            addBotMessage('Respuesta: ' + JSON.stringify(data), 'info');
+        .then(res => res.text())
+        .then(text => {
+          // Eliminar el último mensaje 'escribiendo...'
+          const botMsgs = chatMessages.querySelectorAll('.bot-message');
+          if (botMsgs.length > 0) {
+            const lastBot = botMsgs[botMsgs.length - 1];
+            if (lastBot.textContent.includes('escribiendo')) {
+              lastBot.remove();
+            }
+          }
+          // Mostrar solo un check tipo WhatsApp
+          addBotMessage('✔️', 'success');
+          // Si hay texto de respuesta, mostrarlo como mensaje del bot
+          if (text && text.trim().length > 0) {
+            addBotMessage(text.trim(), 'info');
           }
         })
-        .catch(() => addBotMessage('No se pudo conectar con el servidor.', 'error'));
+        .catch(() => {
+          // Eliminar 'escribiendo...' si hay error
+          const botMsgs = chatMessages.querySelectorAll('.bot-message');
+          if (botMsgs.length > 0) {
+            const lastBot = botMsgs[botMsgs.length - 1];
+            if (lastBot.textContent.includes('escribiendo')) {
+              lastBot.remove();
+            }
+          }
+          addBotMessage('No se pudo conectar con el servidor.', 'error');
+        });
       }
       
       // Enviar audio si existe
@@ -315,17 +340,32 @@
           method: 'POST',
           body: formData
         })
-        .then(res => res.json())
-        .then(data => {
-          if (data.status === "received") {
-            addBotMessage('¡Audio recibido y procesado correctamente!', 'success');
-          } else if (data.status === "filtered") {
-            addBotMessage('Audio filtrado.', 'error');
-          } else {
-            addBotMessage('Respuesta: ' + JSON.stringify(data), 'info');
+        .then(res => res.text())
+        .then(text => {
+          // Eliminar el último mensaje 'Procesando audio...'
+          const botMsgs = chatMessages.querySelectorAll('.bot-message');
+          if (botMsgs.length > 0) {
+            const lastBot = botMsgs[botMsgs.length - 1];
+            if (lastBot.textContent.includes('Procesando audio')) {
+              lastBot.remove();
+            }
+          }
+          // Mostrar solo un check tipo WhatsApp
+          addBotMessage('✔️', 'success');
+          // Si hay texto de respuesta, mostrarlo como mensaje del bot
+          if (text && text.trim().length > 0) {
+            addBotMessage(text.trim(), 'info');
           }
         })
         .catch(() => {
+          // Eliminar 'Procesando audio...' si hay error
+          const botMsgs = chatMessages.querySelectorAll('.bot-message');
+          if (botMsgs.length > 0) {
+            const lastBot = botMsgs[botMsgs.length - 1];
+            if (lastBot.textContent.includes('Procesando audio')) {
+              lastBot.remove();
+            }
+          }
           addBotMessage('No se pudo conectar con el servidor.', 'error');
         })
         .finally(() => {
