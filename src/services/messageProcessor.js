@@ -32,41 +32,31 @@ class MessageProcessor {
       console.log("Payload recibido en processIncomingMessage:", JSON.stringify(payload, null, 2));
 
       // Si es audio, transcribir con Whisper
-      if (type === "audio" && (content || payload.audioBuffer)) {
-        console.log("Entrando al bloque de procesamiento de audio. content:", content, "audioBuffer existe:", !!payload.audioBuffer);
-        if (payload.audioBuffer) {
-          console.log("Tipo de audioBuffer:", typeof payload.audioBuffer, "Longitud:", payload.audioBuffer.length, "Es Buffer:", Buffer.isBuffer(payload.audioBuffer));
-          if (payload.audioBuffer.data) {
-            console.log("audioBuffer.data es Array:", Array.isArray(payload.audioBuffer.data), "Longitud:", payload.audioBuffer.data.length);
-          }
-        }
-        console.log(`🎵 Processing audio message from ${channel}:${user_id}`)
+      if (type === "audio" && (content || payload.audioFilePath)) {
+        console.log("Entrando al bloque de procesamiento de audio. content:", content, "audioFilePath:", payload.audioFilePath);
+        let tempFile, mp3File;
         try {
-          let audioUrl = content;
-          let tempFile, mp3File;
-          // Si viene como buffer (desde el widget), guardarlo temporalmente y convertirlo a mp3
-          if (payload.audioBuffer) {
-            const tempDir = path.join(__dirname, "../../tmp");
-            if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
-            const ext = payload.audioOriginalName ? path.extname(payload.audioOriginalName) : '.ogg';
-            tempFile = path.join(tempDir, `${user_id}_${Date.now()}${ext}`);
-            fs.writeFileSync(tempFile, Buffer.from(payload.audioBuffer.data));
-            if (fs.existsSync(tempFile)) {
-              console.log("Archivo temporal guardado en:", tempFile, "Tamaño:", fs.statSync(tempFile).size);
-            } else {
-              console.error("Archivo temporal NO se guardó correctamente:", tempFile);
-            }
+          let audioPath = content;
+          if (payload.audioFilePath) {
+            audioPath = payload.audioFilePath;
             // Convertir a mp3
-            mp3File = tempFile.replace(/\.[^/.]+$/, ".mp3");
-            audioUrl = mp3File;
-            console.log("Archivo mp3 de destino:", mp3File);
+            mp3File = audioPath.replace(/\.[^/.]+$/, ".mp3");
+            await new Promise((resolve, reject) => {
+              ffmpeg(audioPath)
+                .output(mp3File)
+                .audioCodec('libmp3lame')
+                .on('end', resolve)
+                .on('error', reject)
+                .run();
+            });
+            audioPath = mp3File;
           }
-          console.log("Enviando a Whisper:", audioUrl);
-          processedContent = await whisperService.transcribeAudio(audioUrl);
+          console.log("Enviando a Whisper:", audioPath);
+          processedContent = await whisperService.transcribeAudio(audioPath);
           console.log(`📝 Audio transcribed: "${processedContent}"`);
-          // Eliminar archivos temporales si se crearon
-          if (payload.audioBuffer) {
-            if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+          // Limpiar archivos temporales si se crearon
+          if (payload.audioFilePath) {
+            if (fs.existsSync(payload.audioFilePath)) fs.unlinkSync(payload.audioFilePath);
             if (fs.existsSync(mp3File)) fs.unlinkSync(mp3File);
           }
           // Verificar si es el primer mensaje de audio (no hay temporizador activo)
