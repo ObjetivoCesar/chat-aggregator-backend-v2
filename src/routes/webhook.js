@@ -3,6 +3,7 @@ const router = express.Router()
 const messageProcessor = require("../services/messageProcessor")
 const messageBuffer = require("../services/messageBuffer")
 const rateLimit = require("express-rate-limit")
+const multer = require("multer")
 
 // Rate limiting
 const limiter = rateLimit({
@@ -10,6 +11,8 @@ const limiter = rateLimit({
   max: 100, // límite de 100 peticiones por ventana
   message: "Too many requests from this IP, please try again later"
 })
+
+const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } }) // 10MB máx
 
 // Validación de payload
 const validatePayload = (req, res, next) => {
@@ -22,11 +25,22 @@ const validatePayload = (req, res, next) => {
   next()
 }
 
-router.post("/", limiter, validatePayload, async (req, res) => {
+router.post("/", limiter, upload.single("audio"), validatePayload, async (req, res) => {
   try {
-    console.log("📨 Webhook received:", JSON.stringify(req.body, null, 2))
+    let payload = req.body
+    // Si viene un archivo de audio, agregarlo al payload
+    if (req.file) {
+      payload = {
+        ...payload,
+        type: "audio",
+        audioBuffer: req.file.buffer,
+        audioOriginalName: req.file.originalname,
+        audioMimetype: req.file.mimetype,
+      }
+    }
+    console.log("📨 Webhook received:", JSON.stringify(payload, null, 2))
     // Procesar el mensaje según la plataforma
-    const processedMessage = await messageProcessor.processIncomingMessage(req.body)
+    const processedMessage = await messageProcessor.processIncomingMessage(payload)
     if (!processedMessage) {
       console.log("⚠️  Message filtered out (echo or invalid)")
       return res.status(200).json({ status: "filtered" })

@@ -1,4 +1,5 @@
 const { redisClient } = require("../config/redis");
+const makeWebhook = require("./makeWebhook");
 
 class MessageBuffer {
   constructor() {
@@ -114,15 +115,14 @@ class MessageBuffer {
       
       console.log(`📤 Flushing ${userMessages.length} messages for ${channel}:${userId}`);
       
-      // Procesar mensajes
+      // Procesar mensajes y enviarlos a Make
       for (const message of userMessages) {
         console.log(`✅ Processed message: ${message.content || message.payload?.text || 'N/A'}`);
-        
-        // Aquí puedes agregar lógica adicional como:
-        // - Enviar a webhook externo
-        // - Guardar en base de datos
-        // - Procesar con IA
-        // - etc.
+        try {
+          await makeWebhook.sendToMake(message);
+        } catch (error) {
+          console.error("❌ Error sending message to Make:", error.message);
+        }
       }
       
       // Opcional: limpiar mensajes procesados
