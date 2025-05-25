@@ -11,7 +11,7 @@ let redisClient = null;
 let redisConfig = null;
 try {
   console.log("📦 Intentando cargar módulo Redis...");
-  redisConfig = require("../config/redis");
+  redisConfig = require("./config/redis");
   redisClient = redisConfig.redisClient;
   console.log("✅ Módulo Redis cargado correctamente");
   
@@ -21,12 +21,17 @@ try {
     console.log("✅ Redis client connected");
   }).catch(err => {
     console.warn('❌ Redis connection failed, continuing without Redis:', err.message);
+    redisClient = null;
   });
 } catch (error) {
   console.warn('❌ Redis module not found or failed to load, continuing without Redis:', error.message);
+  redisClient = null;
 }
 
 const app = express()
+
+// IMPORTANTE: trust proxy debe estar activado en Render/Heroku/similares
+app.set('trust proxy', 1);
 
 // Configuración CORS específica
 const corsOptions = {
@@ -70,6 +75,12 @@ app.use("/health", healthRoutes)
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error("Error:", err)
+  if (err && err.message && err.message.includes('Redis')) {
+    return res.status(503).json({
+      error: "Redis unavailable",
+      message: "El servicio de almacenamiento temporal no está disponible. Intenta más tarde."
+    });
+  }
   res.status(500).json({
     error: "Internal server error",
     message: "Something went wrong"
