@@ -375,6 +375,9 @@
           audioLabel.classList.remove('audio-loading');
         });
       }
+
+      // Después de enviar el mensaje al backend, si la respuesta incluye use_sse y sse_endpoint, abrir una conexión SSE y mostrar la respuesta en tiempo real.
+      // Agregar la lógica de conexión SSE y manejo de eventos en el frontend, similar a widget-sse.html.
     }
 
     // Inicializar

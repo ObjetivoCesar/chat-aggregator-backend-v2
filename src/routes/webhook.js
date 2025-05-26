@@ -40,6 +40,7 @@ const validatePayload = (req, res, next) => {
   next()
 }
 
+// Endpoint principal para recibir mensajes
 router.post("/", limiter, upload.single("audio"), validatePayload, async (req, res) => {
   try {
     let payload = req.body
@@ -67,12 +68,16 @@ router.post("/", limiter, upload.single("audio"), validatePayload, async (req, r
     await messageBuffer.addMessage(processedMessage)
     // Limpiar archivo temporal si existe
     if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    // Responder inmediatamente con mensaje de procesamiento y datos SSE
     res.status(200).json({
-      status: "received",
+      status: "processing",
+      message: "Mensaje recibido y en procesamiento",
       user_id: processedMessage.user_id,
       channel: processedMessage.channel,
       type: processedMessage.type,
-    })
+      use_sse: true,
+      sse_endpoint: `/sse/${processedMessage.user_id}?channel=${processedMessage.channel}`
+    });
   } catch (error) {
     console.error("❌ Webhook error:", error)
     res.status(500).json({
@@ -81,5 +86,25 @@ router.post("/", limiter, upload.single("audio"), validatePayload, async (req, r
     })
   }
 })
+
+// Endpoint SSE para recibir respuestas en tiempo real
+router.get("/sse/:userId", (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const channel = req.query.channel || 'web';
+    const sseManager = require("../services/sseManager");
+    console.log(`🔌 SSE connection request for ${channel}:${userId}`);
+    // Registrar conexión SSE
+    sseManager.registerConnection(userId, channel, res);
+    // Enviar mensaje inicial
+    sseManager.sendMessage(userId, channel, "Conectado y esperando respuesta...", "status");
+  } catch (error) {
+    console.error("❌ SSE connection error:", error);
+    res.status(500).json({
+      error: "Failed to establish SSE connection",
+      message: error.message,
+    });
+  }
+});
 
 module.exports = router
