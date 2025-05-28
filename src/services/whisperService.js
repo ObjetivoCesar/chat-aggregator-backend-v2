@@ -23,7 +23,7 @@ class WhisperService {
         console.log(`🎵 Downloading audio from URL: ${audioPathOrUrl}`);
         const audioResponse = await axios.get(audioPathOrUrl, {
           responseType: "stream",
-          timeout: 30000,
+          timeout: 60000,
         });
         audioStream = audioResponse.data;
       } else {
@@ -54,7 +54,7 @@ class WhisperService {
           Authorization: `Bearer ${this.apiKey}`,
           ...formData.getHeaders(),
         },
-        timeout: 60000,
+        timeout: 120000,
       });
 
       const transcription = transcriptionResponse.data.text;
