@@ -163,7 +163,7 @@ class PlatformDetector {
 
   processWebChat(payload) {
     try {
-      const { user_id, type, payload: messagePayload } = payload
+      const { user_id, type, payload: messagePayload, text } = payload
 
       if (!user_id || !type) {
         return null
@@ -172,7 +172,8 @@ class PlatformDetector {
       let content = ""
 
       if (type === "text") {
-        content = messagePayload?.text || ""
+        // Prioridad: payload.text > payload.payload.text
+        content = text || messagePayload?.text || ""
       } else if (type === "audio") {
         content = messagePayload?.audio_url || ""
       }

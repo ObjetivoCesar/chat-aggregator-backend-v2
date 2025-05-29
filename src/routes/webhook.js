@@ -55,6 +55,14 @@ router.post("/", limiter, upload.single("audio"), validatePayload, async (req, r
       }
     }
     console.log("📨 Webhook received:", JSON.stringify(payload, null, 2))
+    // Validación de esquema para canal web
+    if (payload.channel === "web") {
+      const hasText = (payload.type === "text" && (typeof payload.text === "string" || (payload.payload && typeof payload.payload.text === "string")));
+      if (!payload.user_id || !payload.type || !hasText) {
+        console.error("❌ Payload web inválido:", JSON.stringify(payload));
+        return res.status(400).json({ status: "error", message: "Formato de mensaje web inválido" });
+      }
+    }
     // Procesar el mensaje según la plataforma
     const processedMessage = await messageProcessor.processIncomingMessage(payload)
     if (!processedMessage) {
