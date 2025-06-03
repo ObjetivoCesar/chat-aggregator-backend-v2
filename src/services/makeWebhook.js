@@ -3,7 +3,7 @@ const sseManager = require("./sseManager")
 
 class MakeWebhook {
   constructor() {
-    this.webhookUrl = process.env.MAKE_WEBHOOK_URL
+    this.webhookUrl = "https://hook.us2.make.com/qk88jbaje92z9f5386gwvw0spxbcsh3w"
   }
 
   async sendToMake(payload, retryCount = 0) {
