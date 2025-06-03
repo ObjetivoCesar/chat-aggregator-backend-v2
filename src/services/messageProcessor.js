@@ -1,4 +1,5 @@
 const whisperService = require("./whisperService")
+const visionService = require("./visionService")
 const platformDetector = require("./platformDetector")
 const messageBuffer = require("./messageBuffer")
 const fs = require("fs");
@@ -25,7 +26,6 @@ class MessageProcessor {
       }
 
       let processedContent = content
-      let isFirstAudio = false
       let timerKey = `${channel}_${user_id}`
 
       // Log para ver el payload recibido
@@ -63,28 +63,39 @@ class MessageProcessor {
             if (fs.existsSync(payload.audioFilePath)) fs.unlinkSync(payload.audioFilePath);
             if (mp3File && fs.existsSync(mp3File)) fs.unlinkSync(mp3File);
           }
-          // Verificar si es el primer mensaje de audio (no hay temporizador activo)
-          if (!messageBuffer.timers.has(timerKey)) {
-            isFirstAudio = true
-          }
         } catch (error) {
           console.error("❌ Audio transcription failed:", error)
           processedContent = "[Audio transcription failed]"
+        }
+      }
+      // Si es imagen, analizar con Vision API
+      else if (type === "image" && content) {
+        try {
+          console.log("📸 Processing image:", content);
+          processedContent = await visionService.analyzeImage(content);
+          console.log(`📝 Image analyzed: "${processedContent}"`);
+        } catch (error) {
+          console.error("❌ Image analysis failed:", error)
+          processedContent = "[Image analysis failed]"
         }
       }
 
       const processedMessage = {
         user_id,
         channel,
-        type: type === "audio" ? "audio_transcribed" : type,
+        type: type === "audio" ? "audio_transcribed" : type === "image" ? "image_analyzed" : type,
         content: processedContent,
         timestamp: new Date().toISOString(),
         original_type: type,
-        transcription_done: type === "audio"
+        transcription_done: type === "audio" || type === "image"
       }
 
-      // Si es el primer audio, programa el temporizador después de la transcripción
-      if (isFirstAudio) {
+      // Agregar el mensaje al buffer
+      await messageBuffer.addMessage(processedMessage)
+
+      // Iniciar el temporizador SOLO si no hay uno activo
+      if (!messageBuffer.timers.has(timerKey)) {
+        console.log(`⏱️ Starting 20s timer for ${channel}:${user_id} after processing ${type}`);
         messageBuffer.startFlushTimer(timerKey, channel, user_id)
       }
 

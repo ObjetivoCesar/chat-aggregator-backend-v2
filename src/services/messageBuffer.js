@@ -103,13 +103,18 @@ class MessageBuffer {
 
       // Crear mensaje concatenado con formato claro
       const messageParts = messages.map((m, index) => {
-        const prefix = m.original_type === 'audio' ? '[Audio] ' : '';
+        let prefix = '';
+        if (m.original_type === 'audio') {
+          prefix = '[Audio] ';
+        } else if (m.original_type === 'image') {
+          prefix = '[Imagen] ';
+        }
         return `${prefix}${m.content}`;
       });
 
       const concatenated = messageParts.join('\n');
 
-      // Crear payload simplificado para Make.com
+      // Crear payload para Make.com
       const payload = {
         user_id: userId,
         platform: channel,
@@ -137,11 +142,10 @@ class MessageBuffer {
         })
         .catch(error => {
           console.error("❌ Error sending to Make.com:", error);
-          // Registrar el error pero no bloquear el flujo
           console.log("⚠️ Continuing despite Make.com error");
         });
 
-      return true; // Retornar éxito sin esperar respuesta de Make.com
+      return true;
 
     } catch (error) {
       console.error("❌ Error flushing messages:", error);

@@ -50,11 +50,14 @@ class PlatformDetector {
       let type = "text"
       let content = message.text || ""
 
-      // Verificar si es audio
+      // Verificar si es audio o imagen
       if (message.attachments && message.attachments.length > 0) {
         const attachment = message.attachments[0]
         if (attachment.type === "audio") {
           type = "audio"
+          content = attachment.payload?.url || ""
+        } else if (attachment.type === "image") {
+          type = "image"
           content = attachment.payload?.url || ""
         }
       }
@@ -97,6 +100,9 @@ class PlatformDetector {
         const attachment = message.attachments[0]
         if (attachment.type === "audio") {
           type = "audio"
+          content = attachment.payload?.url || ""
+        } else if (attachment.type === "image") {
+          type = "image"
           content = attachment.payload?.url || ""
         }
       }
@@ -146,6 +152,9 @@ class PlatformDetector {
       } else if (message.type === "audio") {
         type = "audio"
         content = message.audio?.url || ""
+      } else if (message.type === "image") {
+        type = "image"
+        content = message.image?.url || ""
       }
 
       return {
@@ -176,6 +185,8 @@ class PlatformDetector {
         content = text || messagePayload?.text || ""
       } else if (type === "audio") {
         content = messagePayload?.audio_url || ""
+      } else if (type === "image") {
+        content = messagePayload?.image_url || ""
       }
 
       return {
