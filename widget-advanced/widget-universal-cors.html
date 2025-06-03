@@ -490,6 +490,7 @@
           <textarea id="chat-widget-textarea" placeholder="Escribe un mensaje..." rows="1"></textarea>
         </div>
         <div id="chat-widget-actions">
+          <div id="chat-widget-image" class="widget-action-button">🖼️</div>
           <div id="chat-widget-mic" class="widget-action-button">🎤</div>
           <div id="chat-widget-send" class="widget-action-button">➤</div>
         </div>
@@ -529,6 +530,9 @@
       </div>
     </div>
   </div>
+  
+  <!-- Input file oculto para imágenes -->
+  <input type="file" id="chat-widget-image-input" accept="image/*" style="display:none" />
   
   <script>
     (function() {
@@ -1546,6 +1550,81 @@
         elements.configPrimaryColor.value = widgetConfig.primaryColor;
         elements.configTitle.value = widgetConfig.title;
         elements.configWelcome.value = widgetConfig.welcomeMessage;
+      }
+      
+      // Agregar referencia al input de imagen
+      const imageInput = document.getElementById('chat-widget-image-input');
+      const imageButton = document.getElementById('chat-widget-image');
+
+      // Evento para abrir el selector de archivos al hacer clic en el botón de imagen
+      imageButton.addEventListener('click', () => {
+        imageInput.value = '';
+        imageInput.click();
+      });
+
+      // Evento para enviar la imagen seleccionada
+      imageInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          sendImageFile(file);
+        }
+      });
+
+      // Función para enviar la imagen al backend
+      async function sendImageFile(file) {
+        if (!file) return;
+        addUserMessage('Imagen: ' + file.name);
+        showTypingIndicator();
+        try {
+          const iframeId = 'image-iframe-' + Math.random().toString(36).substring(2, 15);
+          const iframe = document.createElement('iframe');
+          iframe.id = iframeId;
+          iframe.style.display = 'none';
+          document.body.appendChild(iframe);
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = widgetConfig.apiUrl;
+          form.enctype = 'multipart/form-data';
+          // Campos ocultos
+          const userIdInput = document.createElement('input');
+          userIdInput.type = 'hidden';
+          userIdInput.name = 'user_id';
+          userIdInput.value = userId;
+          form.appendChild(userIdInput);
+          const channelInput = document.createElement('input');
+          channelInput.type = 'hidden';
+          channelInput.name = 'channel';
+          channelInput.value = 'web';
+          form.appendChild(channelInput);
+          const typeInput = document.createElement('input');
+          typeInput.type = 'hidden';
+          typeInput.name = 'type';
+          typeInput.value = 'image';
+          form.appendChild(typeInput);
+          // Input de archivo
+          const fileInput = document.createElement('input');
+          fileInput.type = 'file';
+          fileInput.name = 'image';
+          const newFile = new File([file], file.name, { type: file.type, lastModified: file.lastModified });
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(newFile);
+          fileInput.files = dataTransfer.files;
+          form.appendChild(fileInput);
+          // Enviar
+          iframe.contentDocument.body.appendChild(form);
+          form.submit();
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+            isWaitingForResponse = true;
+            if (!eventSource || connectionStatus !== 'online') {
+              connectSSE(userId, 'web');
+            }
+          }, 2000);
+        } catch (error) {
+          console.error('Error sending image:', error);
+          hideTypingIndicator();
+          addErrorMessage('Error al enviar la imagen', 'Hubo un problema al enviar la imagen. Es posible que haya problemas de CORS. Asegúrate de que el backend esté configurado correctamente.');
+        }
       }
       
       // Iniciar widget
