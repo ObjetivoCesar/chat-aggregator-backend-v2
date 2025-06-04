@@ -117,9 +117,8 @@ router.post("/", limiter, upload.fields([
     }
     console.log("✅ Processed message:", processedMessage)
     
-    // Limpiar archivo temporal si existe
-    if (req.files && audioFile && fs.existsSync(audioFile.path)) fs.unlinkSync(audioFile.path);
-    if (req.files && imageFile && fs.existsSync(imageFile.path)) fs.unlinkSync(imageFile.path);
+    // NO eliminar los archivos aquí - ahora se eliminan en visionService.js y whisperService.js
+    // después de procesarlos correctamente
     
     // Responder inmediatamente con mensaje de procesamiento y datos SSE
     res.status(200).json({
@@ -133,6 +132,11 @@ router.post("/", limiter, upload.fields([
     });
   } catch (error) {
     console.error("❌ Webhook error:", error)
+    
+    // En caso de error, limpiar archivos temporales
+    if (req.files && audioFile && fs.existsSync(audioFile.path)) fs.unlinkSync(audioFile.path);
+    if (req.files && imageFile && fs.existsSync(imageFile.path)) fs.unlinkSync(imageFile.path);
+    
     res.status(500).json({
       error: "Failed to process webhook",
       message: error.message,
