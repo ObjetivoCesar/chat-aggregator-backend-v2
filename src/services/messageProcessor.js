@@ -1,110 +1,133 @@
-const whisperService = require("./whisperService")
-const visionService = require("./visionService")
-const platformDetector = require("./platformDetector")
-const messageBuffer = require("./messageBuffer")
-const fs = require("fs");
-const path = require("path");
-const ffmpeg = require("fluent-ffmpeg");
+const express = require("express")
+const router = express.Router()
+const messageProcessor = require("../services/messageProcessor")
+const messageBuffer = require("../services/messageBuffer")
+const rateLimit = require("express-rate-limit")
+const multer = require("multer")
+const fs = require("fs")
+const path = require("path")
 
-class MessageProcessor {
-  async processIncomingMessage(payload) {
-    try {
-      // Detectar plataforma y extraer datos
-      const platformData = platformDetector.detectPlatform(payload)
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 100, // límite de 100 peticiones por ventana
+  message: "Too many requests from this IP, please try again later"
+})
 
-      if (!platformData) {
-        console.log("⚠️  Could not detect platform or extract data")
-        return null
-      }
-
-      const { channel, user_id, type, content, is_echo } = platformData
-
-      // Filtrar mensajes echo
-      if (is_echo) {
-        console.log(`🔄 Filtering echo message from ${channel}:${user_id}`)
-        return null
-      }
-
-      let processedContent = content
-      let timerKey = `${channel}_${user_id}`
-
-      // Log para ver el payload recibido
-      console.log("Payload recibido en processIncomingMessage:", JSON.stringify(payload, null, 2));
-
-      // Si es audio, transcribir con Whisper
-      if (type === "audio" && (content || payload.audioFilePath)) {
-        console.log("Entrando al bloque de procesamiento de audio. content:", content, "audioFilePath:", payload.audioFilePath);
-        let tempFile, mp3File;
-        try {
-          let audioPath = content;
-          if (payload.audioFilePath) {
-            audioPath = payload.audioFilePath;
-            const ext = path.extname(audioPath).toLowerCase();
-            if (ext !== '.mp3') {
-              mp3File = audioPath.replace(/\.[^/.]+$/, ".mp3");
-              await new Promise((resolve, reject) => {
-                ffmpeg(audioPath)
-                  .output(mp3File)
-                  .audioCodec('libmp3lame')
-                  .on('end', resolve)
-                  .on('error', reject)
-                  .run();
-              });
-              audioPath = mp3File;
-            } else {
-              mp3File = null; // No se crea archivo temporal mp3
-            }
-          }
-          console.log("Enviando a Whisper:", audioPath);
-          processedContent = await whisperService.transcribeAudio(audioPath);
-          console.log(`📝 Audio transcribed: "${processedContent}"`);
-          // Limpiar archivos temporales si se crearon
-          if (payload.audioFilePath) {
-            if (fs.existsSync(payload.audioFilePath)) fs.unlinkSync(payload.audioFilePath);
-            if (mp3File && fs.existsSync(mp3File)) fs.unlinkSync(mp3File);
-          }
-        } catch (error) {
-          console.error("❌ Audio transcription failed:", error)
-          processedContent = "[Audio transcription failed]"
-        }
-      }
-      // Si es imagen, analizar con Vision API
-      else if (type === "image" && content) {
-        try {
-          console.log("📸 Processing image:", content);
-          processedContent = await visionService.analyzeImage(content);
-          console.log(`📝 Image analyzed: "${processedContent}"`);
-        } catch (error) {
-          console.error("❌ Image analysis failed:", error)
-          processedContent = "[Image analysis failed]"
-        }
-      }
-
-      const processedMessage = {
-        user_id,
-        channel,
-        type: type === "audio" ? "audio_transcribed" : type === "image" ? "image_analyzed" : type,
-        content: processedContent,
-        timestamp: new Date().toISOString(),
-        original_type: type,
-        transcription_done: type === "audio" || type === "image"
-      }
-
-      // Agregar el mensaje al buffer
-      await messageBuffer.addMessage(processedMessage)
-
-      // Iniciar el temporizador SOLO si no hay uno activo
-      if (!messageBuffer.timers.has(timerKey)) {
-        console.log(`⏱️ Starting 20s timer for ${channel}:${user_id} after processing ${type}`);
-        messageBuffer.startFlushTimer(timerKey, channel, user_id)
-      }
-
-      return processedMessage
-    } catch (error) {
-      console.error("❌ Error processing message:", error)
-      throw error
+// Multer disk storage para audios e imágenes
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, '../../uploads');
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    const prefix = file.mimetype.startsWith('audio/') ? 'audio-' : 'image-';
+    cb(null, prefix + uniqueSuffix + ext);
+  }
+});
+const upload = multer({ 
+  storage, 
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB máx
+  fileFilter: function (req, file, cb) {
+    if (file.mimetype.startsWith('audio/') || file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo se permiten archivos de audio o imagen'));
     }
   }
+});
+
+// Validación de payload
+const validatePayload = (req, res, next) => {
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return res.status(400).json({ error: "Empty payload" })
+  }
+  if (JSON.stringify(req.body).length > 1024 * 1024) { // 1MB
+    return res.status(413).json({ error: "Payload too large" })
+  }
+  next()
 }
 
-module.exports = new MessageProcessor()
+// Endpoint principal para recibir mensajes
+router.post("/", limiter, upload.single("file"), validatePayload, async (req, res) => {
+  try {
+    let payload = req.body
+    // Si viene un archivo, agregar la información al payload
+    if (req.file) {
+      const isAudio = req.file.mimetype.startsWith('audio/');
+      const isImage = req.file.mimetype.startsWith('image/');
+      
+      payload = {
+        ...payload,
+        type: isAudio ? "audio" : isImage ? "image" : payload.type,
+        filePath: req.file.path,
+        originalName: req.file.originalname,
+        mimetype: req.file.mimetype,
+      }
+    }
+    console.log("📨 Webhook received:", JSON.stringify(payload, null, 2))
+    // Validación de esquema para canal web
+    if (payload.channel === "web") {
+      const hasText = (payload.type === "text" && (typeof payload.text === "string" || (payload.payload && typeof payload.payload.text === "string")));
+      const hasAudio = (payload.type === "audio" && payload.audioFilePath);
+      if (!payload.user_id || !payload.type || (!hasText && !hasAudio)) {
+        console.error("❌ Payload web inválido:", JSON.stringify(payload));
+        return res.status(400).json({ status: "error", message: "Formato de mensaje web inválido" });
+      }
+    }
+    // Procesar el mensaje según la plataforma
+    const processedMessage = await messageProcessor.processIncomingMessage(payload)
+    if (!processedMessage) {
+      console.log("⚠️  Message filtered out (echo or invalid)")
+      // Limpiar archivo temporal si existe
+      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(200).json({ status: "filtered" })
+    }
+    console.log("✅ Processed message:", processedMessage)
+    // Agregar al buffer (solo guardar, no procesar)
+    await messageBuffer.addMessage(processedMessage)
+    // Limpiar archivo temporal si existe
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    // Responder inmediatamente con mensaje de procesamiento y datos SSE
+    res.status(200).json({
+      status: "processing",
+      message: "Mensaje recibido y en procesamiento",
+      user_id: processedMessage.user_id,
+      channel: processedMessage.channel,
+      type: processedMessage.type,
+      use_sse: true,
+      sse_endpoint: `/sse/${processedMessage.user_id}?channel=${processedMessage.channel}`
+    });
+  } catch (error) {
+    console.error("❌ Webhook error:", error)
+    res.status(500).json({
+      error: "Failed to process webhook",
+      message: error.message,
+    })
+  }
+})
+
+// Endpoint SSE para recibir respuestas en tiempo real
+router.get("/sse/:userId", (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const channel = req.query.channel || 'web';
+    const sseManager = require("../services/sseManager");
+    console.log(`🔌 SSE connection request for ${channel}:${userId}`);
+    // Registrar conexión SSE
+    sseManager.registerConnection(userId, channel, res);
+    // Enviar mensaje inicial
+    sseManager.sendMessage(userId, channel, "Conectado y esperando respuesta...", "status");
+  } catch (error) {
+    console.error("❌ SSE connection error:", error);
+    res.status(500).json({
+      error: "Failed to establish SSE connection",
+      message: error.message,
+    });
+  }
+});
+
+module.exports = router
