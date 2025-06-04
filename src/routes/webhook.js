@@ -56,12 +56,13 @@ router.post("/", limiter, upload.fields([
   { name: 'audio', maxCount: 1 },
   { name: 'image', maxCount: 1 }
 ]), validatePayload, async (req, res) => {
+  let audioFile, imageFile;
   try {
     let payload = req.body
     // Si viene un archivo, agregar la información al payload
     if (req.files) {
-      const audioFile = req.files['audio']?.[0];
-      const imageFile = req.files['image']?.[0];
+      audioFile = req.files['audio']?.[0];
+      imageFile = req.files['image']?.[0];
       
       if (audioFile) {
         payload = {
