@@ -24,6 +24,10 @@ class SSEManager {
    */
   registerConnection(userId, channel, res) {
     const connectionKey = this.getConnectionKey(userId, channel);
+    
+    // Limpiar intentos de reconexión previos
+    this.reconnectAttempts.delete(connectionKey);
+    
     // Configurar cabeceras para SSE
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -39,7 +43,8 @@ class SSEManager {
       userId,
       channel,
       timestamp: Date.now(),
-      lastActivity: Date.now()
+      lastActivity: Date.now(),
+      pingInterval: null
     });
     console.log(`🔌 New SSE connection registered: ${connectionKey}`);
     // Configurar ping cada 30 segundos para mantener la conexión viva
@@ -56,13 +61,43 @@ class SSEManager {
         clearInterval(pingInterval);
       }
     }, 30000);
+    // Guardar referencia al intervalo
+    this.connections.get(connectionKey).pingInterval = pingInterval;
     // Manejar cierre de conexión
     res.on('close', () => {
       console.log(`🔌 SSE connection closed: ${connectionKey}`);
-      this.removeConnection(connectionKey);
-      clearInterval(pingInterval);
+      this.handleConnectionClose(connectionKey);
     });
     return true;
+  }
+  /**
+   * Maneja el cierre de una conexión
+   * @param {string} connectionKey - Clave de la conexión
+   */
+  handleConnectionClose(connectionKey) {
+    const connection = this.connections.get(connectionKey);
+    if (!connection) return;
+    // Limpiar intervalo de ping
+    if (connection.pingInterval) {
+      clearInterval(connection.pingInterval);
+    }
+    // Intentar reconexión si no excede el máximo de intentos
+    const attempts = this.reconnectAttempts.get(connectionKey) || 0;
+    if (attempts < this.maxReconnectAttempts) {
+      console.log(`🔄 Attempting to reconnect ${connectionKey} (attempt ${attempts + 1}/${this.maxReconnectAttempts})`);
+      this.reconnectAttempts.set(connectionKey, attempts + 1);
+      
+      // Programar reconexión
+      setTimeout(() => {
+        if (this.reconnectAttempts.has(connectionKey)) {
+          console.log(`⏰ Reconnection timeout for ${connectionKey}`);
+          this.removeConnection(connectionKey);
+        }
+      }, this.reconnectDelay);
+    } else {
+      console.log(`❌ Max reconnection attempts reached for ${connectionKey}`);
+      this.removeConnection(connectionKey);
+    }
   }
   /**
    * Envía un mensaje a un cliente específico
@@ -90,7 +125,7 @@ class SSEManager {
       return true;
     } catch (error) {
       console.error(`❌ Error sending message to ${connectionKey}:`, error);
-      this.removeConnection(connectionKey);
+      this.handleConnectionClose(connectionKey);
       return false;
     }
   }
@@ -105,7 +140,7 @@ class SSEManager {
       // Verificar si la conexión ha expirado
       if (connection.timestamp < expiredTime) {
         console.log(`⏱️ Removing expired SSE connection: ${key}`);
-        this.connections.delete(key);
+        this.removeConnection(key);
         continue;
       }
       try {
@@ -115,8 +150,7 @@ class SSEManager {
         connection.timestamp = now;
       } catch (error) {
         console.error(`❌ Error sending keep-alive to ${key}:`, error);
-        // Si hay error, eliminar la conexión
-        this.connections.delete(key);
+        this.handleConnectionClose(key);
       }
     }
   }
@@ -152,12 +186,17 @@ class SSEManager {
   removeConnection(connectionKey) {
     if (this.connections.has(connectionKey)) {
       const connection = this.connections.get(connectionKey);
+      // Limpiar intervalo de ping
+      if (connection.pingInterval) {
+        clearInterval(connection.pingInterval);
+      }
       try {
         connection.res.end();
       } catch (error) {
         console.error(`Error closing connection ${connectionKey}:`, error);
       }
       this.connections.delete(connectionKey);
+      this.reconnectAttempts.delete(connectionKey);
       console.log(`🔌 Connection removed: ${connectionKey}`);
     }
   }

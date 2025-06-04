@@ -1188,127 +1188,87 @@
         }
       }
       
-      // Conectar a SSE con manejo de CORS
-      function connectSSE(userId, channel = 'web') {
-        // Cerrar conexión existente si hay
-        if (eventSource) {
-          eventSource.close();
-          eventSource = null;
+      // Función para conectar SSE
+      function connectSSE() {
+        console.log('🔄 Iniciando conexión SSE...');
+        console.log('👤 User ID:', userId);
+        console.log('📱 Channel:', channel);
+
+        // Limpiar conexión existente si hay una
+        if (window.sseConnection) {
+          console.log('🧹 Limpiando conexión SSE existente...');
+          window.sseConnection.close();
+          window.sseConnection = null;
         }
-        
-        updateConnectionStatus('connecting');
-        
-        try {
-          // Crear un iframe oculto para evitar problemas de CORS
-          const iframeId = 'sse-iframe-' + Math.random().toString(36).substring(2, 15);
-          const iframe = document.createElement('iframe');
-          iframe.id = iframeId;
-          iframe.style.display = 'none';
-          document.body.appendChild(iframe);
-          
-          // Crear un script que establezca la conexión SSE dentro del iframe
-          const sseUrl = `${widgetConfig.apiUrl}/sse/${userId}?channel=${channel}`;
-          const script = document.createElement('script');
-          script.textContent = `
-            const eventSource = new EventSource("${sseUrl}");
-            
-            eventSource.onopen = function() {
-              window.parent.postMessage({type: "sse-open"}, "*");
-            };
-            
-            eventSource.onmessage = function(event) {
-              window.parent.postMessage({type: "sse-message", data: event.data}, "*");
-            };
-            
-            eventSource.onerror = function() {
-              window.parent.postMessage({type: "sse-error"}, "*");
-            };
-            
-            window.addEventListener("message", function(event) {
-              if (event.data === "sse-close") {
-                eventSource.close();
-                window.parent.postMessage({type: "sse-closed"}, "*");
-              }
-            });
-          `;
-          
-          // Añadir el script al iframe
-          iframe.contentDocument.body.appendChild(script);
-          
-          // Escuchar mensajes del iframe
-          window.addEventListener("message", function(event) {
-            if (event.data && event.data.type) {
-              switch(event.data.type) {
-                case "sse-open":
-                  console.log('SSE connection established');
-                  updateConnectionStatus('online');
-                  break;
-                case "sse-message":
-                  try {
-                    const data = JSON.parse(event.data.data);
-                    console.log('SSE message received:', data);
-                    
-                    // Ocultar indicador de escritura
-                    hideTypingIndicator();
-                    
-                    // Procesar según tipo de mensaje
-                    if (data.type === 'message') {
-                      // Mensaje normal
-                      addBotMessage(data.message);
-                      isWaitingForResponse = false;
-                    } else if (data.type === 'status') {
-                      // Mensaje de estado
-                      addStatusMessage(data.message);
-                    } else if (data.type === 'error') {
-                      // Mensaje de error
-                      addErrorMessage(data.message);
-                      isWaitingForResponse = false;
-                    }
-                  } catch (error) {
-                    console.error('Error processing SSE message:', error);
-                    hideTypingIndicator();
-                    addErrorMessage('Error al procesar la respuesta', 'El servidor envió una respuesta que no se pudo interpretar correctamente.');
-                    isWaitingForResponse = false;
-                  }
-                  break;
-                case "sse-error":
-                  console.error('SSE connection error');
-                  hideTypingIndicator();
-                  updateConnectionStatus('error');
-                  
-                  // Reconectar solo si estamos esperando respuesta
-                  if (isWaitingForResponse) {
-                    setTimeout(() => {
-                      if (isWaitingForResponse) {
-                        connectSSE(userId, channel);
-                      }
-                    }, 3000);
-                  } else {
-                    // Cerrar iframe
-                    document.body.removeChild(iframe);
-                    updateConnectionStatus('offline');
-                  }
-                  break;
-                case "sse-closed":
-                  // Cerrar iframe
-                  document.body.removeChild(iframe);
-                  break;
-              }
+
+        // Crear iframe para manejar CORS
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+
+        // Construir URL SSE
+        const sseUrl = `${widgetConfig.apiUrl}/sse?userId=${userId}&channel=${channel}`;
+        console.log('🔗 URL SSE:', sseUrl);
+
+        // Función para reconectar
+        const reconnect = () => {
+          console.log('🔄 Intentando reconectar SSE...');
+          setTimeout(() => {
+            if (!window.sseConnection) {
+              console.log('⏰ Timeout de reconexión, intentando nuevamente...');
+              connectSSE();
             }
-          });
-          
-          // Guardar referencia al iframe para poder cerrarlo después
-          eventSource = {
-            close: function() {
-              iframe.contentWindow.postMessage("sse-close", "*");
+          }, 3000);
+        };
+
+        // Configurar manejador de mensajes
+        window.addEventListener('message', (event) => {
+          if (event.origin !== widgetConfig.apiUrl) return;
+
+          try {
+            const data = JSON.parse(event.data);
+            console.log('📨 Mensaje SSE recibido:', data);
+
+            switch (data.type) {
+              case 'connected':
+                console.log('✅ Conexión SSE establecida');
+                window.sseConnection = iframe;
+                addStatusMessage('Conectado');
+                break;
+
+              case 'ping':
+                console.log('💓 Ping recibido');
+                break;
+
+              case 'message':
+                console.log('📨 Mensaje recibido:', data.message);
+                addMessage(data.message, 'bot');
+                break;
+
+              case 'error':
+                console.error('❌ Error SSE:', data.message);
+                addErrorMessage(data.message);
+                break;
+
+              default:
+                console.log('📨 Mensaje no manejado:', data);
             }
-          };
-        } catch (error) {
-          console.error('Error creating SSE connection:', error);
-          hideTypingIndicator();
-          updateConnectionStatus('error');
-          addErrorMessage('Error de conexión', 'No se pudo establecer conexión con el servidor. Es posible que haya problemas de CORS.');
-        }
+          } catch (error) {
+            console.error('❌ Error procesando mensaje SSE:', error);
+          }
+        });
+
+        // Cargar iframe con la conexión SSE
+        iframe.src = sseUrl;
+        console.log('🚀 Iframe cargado con URL SSE');
+
+        // Verificar conexión después de 5 segundos
+        setTimeout(() => {
+          if (!window.sseConnection) {
+            console.log('⚠️ No se recibió confirmación de conexión, intentando reconectar...');
+            reconnect();
+          }
+        }, 5000);
       }
       
       // Enviar mensaje de texto con manejo de CORS
@@ -1365,10 +1325,7 @@
             // Asumir que la solicitud fue exitosa
             isWaitingForResponse = true;
             
-            // Conectar a SSE si no estamos conectados
-            if (!eventSource || connectionStatus !== 'online') {
-              connectSSE(userId, 'web');
-            }
+            // Ya no intentamos conectar SSE aquí, la conexión debe estar establecida desde que se abrió el widget
           }, 1000);
         } catch (error) {
           console.error('Error sending message:', error);
@@ -1458,10 +1415,7 @@
             // Asumir que la solicitud fue exitosa
             isWaitingForResponse = true;
             
-            // Conectar a SSE si no estamos conectados
-            if (!eventSource || connectionStatus !== 'online') {
-              connectSSE(userId, 'web');
-            }
+            // Ya no intentamos conectar SSE aquí, la conexión debe estar establecida desde que se abrió el widget
           }, 2000);
         } catch (error) {
           console.error('Error sending audio:', error);
@@ -1498,6 +1452,12 @@
         elements.button.addEventListener('click', () => {
           elements.window.style.display = 'flex';
           elements.button.style.display = 'none';
+          
+          // Establecer conexión SSE inmediatamente al abrir el widget
+          if (!eventSource || connectionStatus !== 'online') {
+            console.log('Estableciendo conexión SSE al abrir el widget');
+            connectSSE(userId, 'web');
+          }
         });
         
         elements.close.addEventListener('click', () => {
@@ -1616,9 +1576,7 @@
           setTimeout(() => {
             document.body.removeChild(iframe);
             isWaitingForResponse = true;
-            if (!eventSource || connectionStatus !== 'online') {
-              connectSSE(userId, 'web');
-            }
+            // Ya no intentamos conectar SSE aquí, la conexión debe estar establecida desde que se abrió el widget
           }, 2000);
         } catch (error) {
           console.error('Error sending image:', error);
