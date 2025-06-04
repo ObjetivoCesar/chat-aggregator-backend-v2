@@ -82,13 +82,27 @@ router.post("/", limiter, upload.fields([
       }
     }
     console.log("📨 Webhook received:", JSON.stringify(payload, null, 2))
-    // Validación de esquema para canal web
-    if (payload.channel === "web") {
-      const hasText = (payload.type === "text" && (typeof payload.text === "string" || (payload.payload && typeof payload.payload.text === "string")));
-      const hasAudio = (payload.type === "audio" && payload.audioFilePath);
-      if (!payload.user_id || !payload.type || (!hasText && !hasAudio)) {
-        console.error("❌ Payload web inválido:", JSON.stringify(payload));
-        return res.status(400).json({ status: "error", message: "Formato de mensaje web inválido" });
+    // Validar payload según el canal
+    if (payload.channel === 'web') {
+      if (!payload.user_id || !payload.channel || !payload.type) {
+        console.log(`❌ Payload web inválido:`, payload);
+        return res.status(400).json({ error: 'Payload inválido' });
+      }
+      
+      // Validar campos específicos según el tipo
+      if (payload.type === 'text' && !payload.text) {
+        console.log(`❌ Payload web inválido: Falta campo 'text'`);
+        return res.status(400).json({ error: 'Campo text requerido para mensajes de texto' });
+      }
+      
+      if (payload.type === 'image' && !payload.filePath) {
+        console.log(`❌ Payload web inválido: Falta campo 'filePath'`);
+        return res.status(400).json({ error: 'Campo filePath requerido para imágenes' });
+      }
+      
+      if (payload.type === 'audio' && !payload.filePath) {
+        console.log(`❌ Payload web inválido: Falta campo 'filePath'`);
+        return res.status(400).json({ error: 'Campo filePath requerido para audio' });
       }
     }
     // Procesar el mensaje según la plataforma
@@ -101,11 +115,11 @@ router.post("/", limiter, upload.fields([
       return res.status(200).json({ status: "filtered" })
     }
     console.log("✅ Processed message:", processedMessage)
-    // Agregar al buffer (solo guardar, no procesar)
-    await messageBuffer.addMessage(processedMessage)
+    
     // Limpiar archivo temporal si existe
     if (req.files && audioFile && fs.existsSync(audioFile.path)) fs.unlinkSync(audioFile.path);
     if (req.files && imageFile && fs.existsSync(imageFile.path)) fs.unlinkSync(imageFile.path);
+    
     // Responder inmediatamente con mensaje de procesamiento y datos SSE
     res.status(200).json({
       status: "processing",
