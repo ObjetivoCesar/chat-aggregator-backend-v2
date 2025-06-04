@@ -39,12 +39,6 @@ class MessageBuffer {
         return true;
       }
 
-      // Si es imagen y no está analizada, esperar a que se complete el análisis
-      if (message.original_type === "image" && !message.analysis_done) {
-        console.log("⏳ Esperando análisis de imagen antes de iniciar temporizador");
-        return true;
-      }
-
       // Si no hay temporizador activo, iniciar uno nuevo
       if (!this.timers.has(timerKey)) {
         console.log(`⏰ Iniciando nuevo temporizador para ${timerKey}`);
@@ -120,7 +114,7 @@ class MessageBuffer {
 
       const concatenated = messageParts.join('\n');
 
-      // Crear payload para Make.com
+      // Crear payload simplificado para Make.com
       const payload = {
         user_id: userId,
         platform: channel,
@@ -148,10 +142,11 @@ class MessageBuffer {
         })
         .catch(error => {
           console.error("❌ Error sending to Make.com:", error);
+          // Registrar el error pero no bloquear el flujo
           console.log("⚠️ Continuing despite Make.com error");
         });
 
-      return true;
+      return true; // Retornar éxito sin esperar respuesta de Make.com
 
     } catch (error) {
       console.error("❌ Error flushing messages:", error);
