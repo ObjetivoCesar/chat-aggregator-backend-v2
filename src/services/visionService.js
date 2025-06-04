@@ -15,10 +15,16 @@ class VisionService {
           {
             role: "user",
             content: [
-              { type: "text", text: "Describe detalladamente lo que ves en esta imagen. Sé específico y descriptivo." },
+              { 
+                type: "text", 
+                text: "Eres un asistente especializado en extraer texto de imágenes. Tu misión es analizar la imagen adjunta y devolver todo el texto exacto manteniendo el orden y saltos de línea tal como aparecen." 
+              },
               {
                 type: "image_url",
-                image_url: imageUrl
+                image_url: {
+                  url: imageUrl,
+                  detail: "high"
+                }
               }
             ]
           }
