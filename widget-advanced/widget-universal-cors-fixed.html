@@ -561,6 +561,8 @@
         textarea: document.getElementById('chat-widget-textarea'),
         send: document.getElementById('chat-widget-send'),
         mic: document.getElementById('chat-widget-mic'),
+        image: document.getElementById('chat-widget-image'), // Añadido para el botón de imagen
+        imageInput: document.getElementById('chat-widget-image-input'), // Añadido para el input de imagen
         audioContainer: document.getElementById('chat-widget-audio-container'),
         audioTimer: document.getElementById('chat-widget-audio-timer'),
         audioRecord: document.getElementById('chat-widget-audio-record'),
@@ -584,6 +586,7 @@
       let typingIndicator = null;
       let connectionStatus = 'disconnected';
       let retryCount = 0;
+      let sseReconnectInterval = null;
       
       // Variables para grabación de audio
       let mediaRecorder = null;
@@ -1073,7 +1076,8 @@
           html = html.replace(/<li>(.*?)<\/li>(?:\s*<li>)/g, '<li>$1</li><li>');
           html = html.replace(/(?:<\/li>\s*)<li>(.*?)<\/li>/g, '</li><li>$1</li>');
           html = html.replace(/(?:^|<\/pre>|<\/p>)\s*<li>/g, '$&<ul>');
-          html = html.replace(/<\/li>\s*(?:$|<pre>|<p>)/g, '</ul>$&');
+          html = html.replace(/<\/li>\s*(?:$|<pre>|<p>)/g, '</ul>$&
+');
         }
         
         // Procesar citas
@@ -1188,7 +1192,7 @@
         }
       }
       
-      // Conectar a SSE con manejo de CORS
+      // Conectar a SSE con manejo de CORS y reconexión
       function connectSSE(userId, channel = 'web') {
         // Cerrar conexión existente si hay
         if (eventSource) {
@@ -1197,6 +1201,7 @@
         }
         
         updateConnectionStatus('connecting');
+        console.log('Estableciendo conexión SSE...');
         
         try {
           // Crear un iframe oculto para evitar problemas de CORS
@@ -1243,6 +1248,7 @@
                 case "sse-open":
                   console.log('SSE connection established');
                   updateConnectionStatus('online');
+                  retryCount = 0; // Resetear contador de reintentos
                   break;
                 case "sse-message":
                   try {
@@ -1277,18 +1283,14 @@
                   hideTypingIndicator();
                   updateConnectionStatus('error');
                   
-                  // Reconectar solo si estamos esperando respuesta
-                  if (isWaitingForResponse) {
-                    setTimeout(() => {
-                      if (isWaitingForResponse) {
-                        connectSSE(userId, channel);
-                      }
-                    }, 3000);
-                  } else {
-                    // Cerrar iframe
-                    document.body.removeChild(iframe);
-                    updateConnectionStatus('offline');
-                  }
+                  // Intentar reconectar automáticamente después de un error
+                  setTimeout(() => {
+                    if (connectionStatus !== 'online') {
+                      console.log('Intentando reconexión automática después de error...');
+                      connectSSE(userId, channel);
+                    }
+                  }, 5000);
+                  
                   break;
                 case "sse-closed":
                   // Cerrar iframe
@@ -1308,13 +1310,30 @@
           console.error('Error creating SSE connection:', error);
           hideTypingIndicator();
           updateConnectionStatus('error');
-          addErrorMessage('Error de conexión', 'No se pudo establecer conexión con el servidor. Es posible que haya problemas de CORS.');
+          
+          // Intentar reconectar automáticamente después de un error
+          setTimeout(() => {
+            if (connectionStatus !== 'online') {
+              console.log('Intentando reconexión automática después de error...');
+              connectSSE(userId, channel);
+            }
+          }, 5000);
+          
+          addErrorMessage('Error de conexión', 'No se pudo establecer conexión con el servidor. Intentando reconectar automáticamente...');
         }
       }
       
       // Enviar mensaje de texto con manejo de CORS
       async function sendTextMessage(text) {
         if (!text.trim()) return;
+        
+        // Asegurar que la conexión SSE esté activa antes de enviar
+        if (!eventSource || connectionStatus !== 'online') {
+          console.log('SSE no activa, conectando antes de enviar mensaje...');
+          connectSSE(userId, 'web');
+          // Dar tiempo para que se establezca la conexión
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
         
         // Mostrar mensaje del usuario
         addUserMessage(text);
@@ -1366,10 +1385,10 @@
             // Asumir que la solicitud fue exitosa
             isWaitingForResponse = true;
             
-            // Conectar a SSE si no estamos conectados
-            if (!eventSource || connectionStatus !== 'online') {
-              connectSSE(userId, 'web');
-            }
+            // Ya no necesitamos conectar aquí, se hace al inicio
+            // if (!eventSource || connectionStatus !== 'online') {
+            //   connectSSE(userId, 'web');
+            // }
           }, 1000);
         } catch (error) {
           console.error('Error sending message:', error);
@@ -1389,6 +1408,14 @@
       // Enviar archivo de audio con manejo de CORS
       async function sendAudioFile(file) {
         if (!file) return;
+        
+        // Asegurar que la conexión SSE esté activa antes de enviar
+        if (!eventSource || connectionStatus !== 'online') {
+          console.log('SSE no activa, conectando antes de enviar audio...');
+          connectSSE(userId, 'web');
+          // Dar tiempo para que se establezca la conexión
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
         
         // Mostrar mensaje del usuario
         addUserMessage('Audio: ' + file.name, true);
@@ -1459,10 +1486,10 @@
             // Asumir que la solicitud fue exitosa
             isWaitingForResponse = true;
             
-            // Conectar a SSE si no estamos conectados
-            if (!eventSource || connectionStatus !== 'online') {
-              connectSSE(userId, 'web');
-            }
+            // Ya no necesitamos conectar aquí, se hace al inicio
+            // if (!eventSource || connectionStatus !== 'online') {
+            //   connectSSE(userId, 'web');
+            // }
           }, 2000);
         } catch (error) {
           console.error('Error sending audio:', error);
@@ -1472,6 +1499,103 @@
           let errorDetails = 'Hubo un problema al enviar el audio. Es posible que haya problemas de CORS. Asegúrate de que el backend esté configurado correctamente.';
           
           addErrorMessage('Error al enviar el audio', errorDetails);
+        }
+      }
+      
+      // Enviar archivo de imagen con manejo de CORS
+      async function sendImageFile(file) {
+        if (!file) return;
+        
+        // Asegurar que la conexión SSE esté activa antes de enviar
+        if (!eventSource || connectionStatus !== 'online') {
+          console.log('SSE no activa, conectando antes de enviar imagen...');
+          connectSSE(userId, 'web');
+          // Dar tiempo para que se establezca la conexión
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+        // Mostrar mensaje del usuario
+        addUserMessage('Imagen: ' + file.name);
+        
+        // Mostrar indicador de escritura
+        showTypingIndicator();
+        
+        try {
+          // Crear un iframe oculto para evitar problemas de CORS
+          const iframeId = 'image-iframe-' + Math.random().toString(36).substring(2, 15);
+          const iframe = document.createElement('iframe');
+          iframe.id = iframeId;
+          iframe.style.display = 'none';
+          document.body.appendChild(iframe);
+          
+          // Crear un formulario dentro del iframe
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = widgetConfig.apiUrl;
+          form.enctype = 'multipart/form-data';
+          
+          // Añadir campos al formulario
+          const userIdInput = document.createElement('input');
+          userIdInput.type = 'hidden';
+          userIdInput.name = 'user_id';
+          userIdInput.value = userId;
+          form.appendChild(userIdInput);
+          
+          const channelInput = document.createElement('input');
+          channelInput.type = 'hidden';
+          channelInput.name = 'channel';
+          channelInput.value = 'web';
+          form.appendChild(channelInput);
+          
+          const typeInput = document.createElement('input');
+          typeInput.type = 'hidden';
+          typeInput.name = 'type';
+          typeInput.value = 'image';
+          form.appendChild(typeInput);
+          
+          // Crear un input de archivo y asignarle el archivo
+          const fileInput = document.createElement('input');
+          fileInput.type = 'file';
+          fileInput.name = 'image';
+          
+          // Crear un nuevo archivo con el mismo contenido
+          const newFile = new File([file], file.name, {
+            type: file.type,
+            lastModified: file.lastModified
+          });
+          
+          // Crear un DataTransfer para asignar el archivo al input
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(newFile);
+          fileInput.files = dataTransfer.files;
+          
+          form.appendChild(fileInput);
+          
+          // Añadir el formulario al iframe y enviarlo
+          iframe.contentDocument.body.appendChild(form);
+          form.submit();
+          
+          // Esperar un tiempo para que se procese la solicitud
+          setTimeout(() => {
+            // Eliminar el iframe
+            document.body.removeChild(iframe);
+            
+            // Asumir que la solicitud fue exitosa
+            isWaitingForResponse = true;
+            
+            // Ya no necesitamos conectar aquí, se hace al inicio
+            // if (!eventSource || connectionStatus !== 'online') {
+            //   connectSSE(userId, 'web');
+            // }
+          }, 2000);
+        } catch (error) {
+          console.error('Error sending image:', error);
+          hideTypingIndicator();
+          
+          // Mensaje de error detallado
+          let errorDetails = 'Hubo un problema al enviar la imagen. Es posible que haya problemas de CORS. Asegúrate de que el backend esté configurado correctamente.';
+          
+          addErrorMessage('Error al enviar la imagen', errorDetails);
         }
       }
       
@@ -1495,10 +1619,27 @@
         // Verificar conexión
         checkConnection();
         
+        // Establecer conexión SSE inmediatamente al iniciar
+        connectSSE(userId, 'web');
+        
+        // Configurar reconexión automática
+        if (sseReconnectInterval) clearInterval(sseReconnectInterval);
+        sseReconnectInterval = setInterval(() => {
+          if (!eventSource || connectionStatus !== 'online') {
+            console.log('Reconectando SSE automáticamente...');
+            connectSSE(userId, 'web');
+          }
+        }, 30000); // Verificar cada 30 segundos
+        
         // Event listeners
         elements.button.addEventListener('click', () => {
           elements.window.style.display = 'flex';
           elements.button.style.display = 'none';
+          
+          // Asegurar que la conexión SSE esté activa cuando se abre el widget
+          if (!eventSource || connectionStatus !== 'online') {
+            connectSSE(userId, 'web');
+          }
         });
         
         elements.close.addEventListener('click', () => {
@@ -1510,7 +1651,7 @@
           sendTextMessage(elements.textarea.value);
         });
         
-        elements.textarea.addEventListener('keypress', (e) => {
+        elements.textarea.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendTextMessage(elements.textarea.value);
@@ -1519,116 +1660,38 @@
         
         elements.textarea.addEventListener('input', adjustTextareaHeight);
         
-        // Event listeners para grabación de audio
-        elements.mic.addEventListener('click', () => {
-          showAudioRecorder();
-        });
-        
+        // Event listeners para audio
+        elements.mic.addEventListener('click', showAudioRecorder);
         elements.audioRecord.addEventListener('click', startRecording);
         elements.audioStop.addEventListener('click', stopRecording);
         elements.audioSend.addEventListener('click', sendRecordedAudio);
         elements.audioCancel.addEventListener('click', closeAudioRecorder);
         
+        // Event listeners para imágenes
+        elements.image.addEventListener('click', () => {
+          elements.imageInput.click();
+        });
+        
+        elements.imageInput.addEventListener('change', (e) => {
+          const file = e.target.files[0];
+          if (file) {
+            sendImageFile(file);
+          }
+        });
+        
         // Event listeners para configuración
-        elements.config.addEventListener('click', (e) => {
-          e.stopPropagation();
+        elements.config.addEventListener('click', () => {
           elements.configPanel.style.display = elements.configPanel.style.display === 'block' ? 'none' : 'block';
         });
         
         elements.configSave.addEventListener('click', saveConfig);
         elements.configReset.addEventListener('click', resetConfig);
         
-        // Cerrar panel de configuración al hacer clic fuera
-        document.addEventListener('click', (e) => {
-          if (elements.configPanel.style.display === 'block' && 
-              !elements.configPanel.contains(e.target) && 
-              e.target !== elements.config) {
-            elements.configPanel.style.display = 'none';
-          }
-        });
-        
-        // Inicializar configuración
-        elements.configPrimaryColor.value = widgetConfig.primaryColor;
-        elements.configTitle.value = widgetConfig.title;
-        elements.configWelcome.value = widgetConfig.welcomeMessage;
+        // Ajustar altura inicial del textarea
+        adjustTextareaHeight();
       }
       
-      // Agregar referencia al input de imagen
-      const imageInput = document.getElementById('chat-widget-image-input');
-      const imageButton = document.getElementById('chat-widget-image');
-
-      // Evento para abrir el selector de archivos al hacer clic en el botón de imagen
-      imageButton.addEventListener('click', () => {
-        imageInput.value = '';
-        imageInput.click();
-      });
-
-      // Evento para enviar la imagen seleccionada
-      imageInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          sendImageFile(file);
-        }
-      });
-
-      // Función para enviar la imagen al backend
-      async function sendImageFile(file) {
-        if (!file) return;
-        addUserMessage('Imagen: ' + file.name);
-        showTypingIndicator();
-        try {
-          const iframeId = 'image-iframe-' + Math.random().toString(36).substring(2, 15);
-          const iframe = document.createElement('iframe');
-          iframe.id = iframeId;
-          iframe.style.display = 'none';
-          document.body.appendChild(iframe);
-          const form = document.createElement('form');
-          form.method = 'POST';
-          form.action = widgetConfig.apiUrl;
-          form.enctype = 'multipart/form-data';
-          // Campos ocultos
-          const userIdInput = document.createElement('input');
-          userIdInput.type = 'hidden';
-          userIdInput.name = 'user_id';
-          userIdInput.value = userId;
-          form.appendChild(userIdInput);
-          const channelInput = document.createElement('input');
-          channelInput.type = 'hidden';
-          channelInput.name = 'channel';
-          channelInput.value = 'web';
-          form.appendChild(channelInput);
-          const typeInput = document.createElement('input');
-          typeInput.type = 'hidden';
-          typeInput.name = 'type';
-          typeInput.value = 'image';
-          form.appendChild(typeInput);
-          // Input de archivo
-          const fileInput = document.createElement('input');
-          fileInput.type = 'file';
-          fileInput.name = 'image';
-          const newFile = new File([file], file.name, { type: file.type, lastModified: file.lastModified });
-          const dataTransfer = new DataTransfer();
-          dataTransfer.items.add(newFile);
-          fileInput.files = dataTransfer.files;
-          form.appendChild(fileInput);
-          // Enviar
-          iframe.contentDocument.body.appendChild(form);
-          form.submit();
-          setTimeout(() => {
-            document.body.removeChild(iframe);
-            isWaitingForResponse = true;
-            if (!eventSource || connectionStatus !== 'online') {
-              connectSSE(userId, 'web');
-            }
-          }, 2000);
-        } catch (error) {
-          console.error('Error sending image:', error);
-          hideTypingIndicator();
-          addErrorMessage('Error al enviar la imagen', 'Hubo un problema al enviar la imagen. Es posible que haya problemas de CORS. Asegúrate de que el backend esté configurado correctamente.');
-        }
-      }
-      
-      // Iniciar widget
+      // Iniciar el widget
       initWidget();
     })();
   </script>
