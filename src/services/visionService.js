@@ -2,6 +2,13 @@ const { OpenAI } = require("openai");
 
 class VisionService {
   constructor() {
+    console.log("🔑 Verificando configuración de OpenAI...");
+    if (!process.env.OPENAI_API_KEY) {
+      console.error("❌ OPENAI_API_KEY no está configurada");
+    } else {
+      console.log("✅ OPENAI_API_KEY está configurada");
+    }
+    
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
@@ -9,6 +16,7 @@ class VisionService {
 
   async analyzeImage(imageUrl) {
     try {
+      console.log("🔍 Iniciando análisis de imagen con OpenAI...");
       const response = await this.openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
@@ -32,6 +40,7 @@ class VisionService {
         max_tokens: 500
       });
 
+      console.log("✅ Análisis de imagen completado");
       return response.choices[0].message.content;
     } catch (error) {
       console.error("❌ Error analyzing image:", error);
