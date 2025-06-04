@@ -14,7 +14,7 @@ const limiter = rateLimit({
   message: "Too many requests from this IP, please try again later"
 })
 
-// Multer disk storage para audios
+// Multer disk storage para audios e imágenes
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = path.join(__dirname, '../../uploads');
@@ -24,10 +24,21 @@ const storage = multer.diskStorage({
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const ext = path.extname(file.originalname);
-    cb(null, 'audio-' + uniqueSuffix + ext);
+    const prefix = file.mimetype.startsWith('audio/') ? 'audio-' : 'image-';
+    cb(null, prefix + uniqueSuffix + ext);
   }
 });
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB máx
+const upload = multer({ 
+  storage, 
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB máx
+  fileFilter: function (req, file, cb) {
+    if (file.mimetype.startsWith('audio/') || file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo se permiten archivos de audio o imagen'));
+    }
+  }
+});
 
 // Validación de payload
 const validatePayload = (req, res, next) => {
@@ -41,17 +52,20 @@ const validatePayload = (req, res, next) => {
 }
 
 // Endpoint principal para recibir mensajes
-router.post("/", limiter, upload.single("audio"), validatePayload, async (req, res) => {
+router.post("/", limiter, upload.single("file"), validatePayload, async (req, res) => {
   try {
     let payload = req.body
-    // Si viene un archivo de audio, agregar la ruta al payload
+    // Si viene un archivo, agregar la información al payload
     if (req.file) {
+      const isAudio = req.file.mimetype.startsWith('audio/');
+      const isImage = req.file.mimetype.startsWith('image/');
+      
       payload = {
         ...payload,
-        type: "audio",
-        audioFilePath: req.file.path,
-        audioOriginalName: req.file.originalname,
-        audioMimetype: req.file.mimetype,
+        type: isAudio ? "audio" : isImage ? "image" : payload.type,
+        filePath: req.file.path,
+        originalName: req.file.originalname,
+        mimetype: req.file.mimetype,
       }
     }
     console.log("📨 Webhook received:", JSON.stringify(payload, null, 2))
