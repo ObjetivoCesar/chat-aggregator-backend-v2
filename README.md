@@ -1,21 +1,25 @@
 # Chat Aggregator Backend
 
-Backend inteligente para agregación de mensajes de chatbots multicanal con transcripción de audio y compatibilidad con Make.com.
+Backend inteligente para agregación de mensajes de chatbots multicanal con transcripción de audio, análisis de imágenes y compatibilidad con Make.com.
 
 ## 🚀 Características
 
 - **Multicanal**: Soporte para Facebook Messenger, Instagram, WhatsApp y Web Chat
-- **Buffering Inteligente**: Agrupa mensajes durante 20 segundos para respuestas coherentes
-- **Transcripción de Audio**: Convierte mensajes de voz a texto usando Whisper de OpenAI
-- **Filtrado de Echo**: Elimina automáticamente mensajes echo de todas las plataformas
-- **Integración Make.com**: Envía mensajes procesados a webhooks de Make.com
-- **Redis**: Almacenamiento temporal escalable para múltiples conversaciones
+- **Buffering Inteligente**: Agrupa mensajes durante 20 segundos para respuestas coherentes, con manejo de duplicados.
+- **Transcripción de Audio**: Convierte mensajes de voz a texto usando Whisper de OpenAI.
+- **Análisis de Imágenes**: Extrae texto de imágenes usando OpenAI Vision API (`gpt-4o-mini`).
+- **Gestión Temporal de Imágenes**: Sube imágenes a Cloudinary temporalmente para análisis y las elimina automáticamente después.
+- **Filtrado de Echo**: Elimina automáticamente mensajes echo de todas las plataformas.
+- **Integración Make.com**: Envía mensajes procesados y agregados a webhooks de Make.com.
+- **Redis**: Almacenamiento temporal escalable para múltiples conversaciones y buffer de mensajes.
+- **Gestión Robusta de SSE**: Manejo mejorado de conexiones Server-Sent Events para comunicación en tiempo real con el frontend, incluyendo reconexión automática y pings.
 
 ## 📋 Requisitos
 
 - Node.js 18+
 - Redis (local o remoto)
-- Cuenta OpenAI (para transcripción de audio)
+- Cuenta OpenAI (para transcripción de audio y análisis de imágenes)
+- Cuenta Cloudinary (para gestión temporal de imágenes subidas desde el Web Chat)
 - Webhook de Make.com configurado
 
 ## 🛠️ Instalación
@@ -45,7 +49,7 @@ Edita el archivo \`.env\` con tus configuraciones:
 
 \`\`\`env
 # Configuración del servidor
-PORT=3000
+PORT=10000
 NODE_ENV=production
 
 # Redis
@@ -54,6 +58,11 @@ REDIS_URL=redis://localhost:6379
 # OpenAI
 OPENAI_API_KEY=sk-tu-clave-openai-aqui
 OPENAI_WHISPER_PROMPT="Transcribe este mensaje de audio con precisión."
+# Opcional: Prompt para el análisis de visión si se gestiona desde .env
+# OPENAI_VISION_PROMPT="Eres un asistente especializado en extraer texto de imágenes..."
+
+# Cloudinary (Necesario si usas la funcionalidad de subida de imágenes en Web Chat)
+CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name
 
 # Make.com
 MAKE_WEBHOOK_URL=https://hook.make.com/tu-webhook-url-aqui
@@ -147,45 +156,44 @@ npm start
 
 ### Web Chat (Formato personalizado)
 
-**Estructura JSON esperada:**
+**Estructura JSON esperada para texto, audio o imagen (subidos como \`multipart/form-data\`):**
 \`\`\`json
 {
   "user_id": "web_user_123",
   "channel": "web",
-  "type": "text",
+  "type": "text", // o "audio", "image"
   "payload": {
-    "text": "Mensaje desde web"
+    "text": "Mensaje desde web" // presente si type es "text"
+    // Para audio/imagen, el archivo se envía en el campo 'audio' o 'image'
   }
 }
 \`\`\`
 
-**Para audio:**
-\`\`\`json
-{
-  "user_id": "web_user_123",
-  "channel": "web",
-  "type": "audio",
-  "payload": {
-    "audio_url": "https://audio-url.com/file.mp3"
-  }
-}
-\`\`\`
+**Campos clave:**
+- \`user_id\`: ID del usuario web
+- \`channel\`: Debe ser "web"
+- \`type\`: Tipo de mensaje ("text", "audio", "image")
+- \`payload.text\`: Contenido del mensaje de texto (si aplica)
+- Archivo: Enviado como \`multipart/form-data\` bajo el nombre del campo \`audio\` o \`image\`.
 
-## 🔄 Flujo de Procesamiento
+## 🔄 Flujo de Procesamiento Actualizado
 
-1. **Recepción**: Webhook recibe mensaje en \`POST /webhook\`
-2. **Detección**: Identifica plataforma y extrae datos
-3. **Filtrado**: Elimina mensajes echo automáticamente
-4. **Transcripción**: Si es audio, convierte a texto con Whisper
-5. **Buffering**: Agrega al buffer Redis con timer de 20s
-6. **Agregación**: Combina todos los mensajes del buffer
-7. **Envío**: Envía mensaje consolidado a Make.com
-8. **Limpieza**: Elimina datos del buffer
+1. **Recepción**: Webhook recibe mensaje en \`POST /webhook\`. Archivos (audio/imagen de Web Chat) son gestionados por Multer.
+2. **Detección y Validación**: Identifica plataforma y extrae datos. Valida la estructura del payload según el canal y tipo de mensaje.
+3. **Filtrado**: Elimina mensajes echo automáticamente.
+4. **Procesamiento Multimedia**: Si es audio (de cualquier canal) o imagen (de Web Chat):
+   - **Audio**: Convierte a texto usando Whisper.
+   - **Imagen (Web Chat)**: Sube a Cloudinary temporalmente, obtiene URL, analiza con OpenAI Vision API (\`gpt-4o-mini\`) para extraer texto, y **elimina la imagen de Cloudinary inmediatamente**.
+5. **Buffering Inteligente**: Agrega el contenido procesado (texto normal, transcripción de audio prefijada con '[Audio]', texto de imagen prefijado con '[Imagen]') al buffer Redis con un timer de 20s. Maneja duplicados.
+6. **Agregación**: Al expirar el timer (o recibir un nuevo mensaje que extienda el timer), combina todos los mensajes del buffer para ese usuario/canal.
+7. **Envío a Make.com**: Envía el mensaje consolidado al webhook de Make.com.
+8. **Envío al Widget (Web Chat)**: La respuesta de Make.com es enviada de vuelta al backend y luego reenviada al widget a través de la conexión SSE.
+9. **Limpieza Local**: Elimina archivos temporales locales (si aplica) después del procesamiento.
 
 ## 📡 Endpoints
 
 ### POST /webhook
-Recibe mensajes de todas las plataformas.
+Recibe mensajes de todas las plataformas. Ahora maneja \`multipart/form-data\` para subidas de archivos de Web Chat.
 
 **Respuesta exitosa:**
 \`\`\`json
@@ -193,25 +201,32 @@ Recibe mensajes de todas las plataformas.
   "status": "received",
   "user_id": "123456",
   "channel": "whatsapp",
-  "type": "text"
+  "type": "text", // o "audio", "image"
+  "sse_endpoint": "/sse/user_123456/web" // solo para Web Chat
 }
 \`\`\`
 
+La respuesta para Web Chat incluye un \`sse_endpoint\` para que el widget se conecte y reciba actualizaciones en tiempo real (como la respuesta de Make.com).
+
 ### GET /health
-Verifica el estado del servicio.
+Verifica el estado del servicio y sus dependencias.
 
 **Respuesta:**
 \`\`\`json
 {
   "status": "up",
-  "timestamp": "2024-01-15T10:30:00.000Z",
+  "timestamp": "...",
   "services": {
-    "redis": "connected",
-    "openai": "configured",
-    "make_webhook": "configured"
+    "redis": "connected" || "disconnected",
+    "openai": "configured" || "not configured", // Verifica si OPENAI_API_KEY está presente
+    "cloudinary": "configured" || "not configured", // Verifica si CLOUDINARY_URL está presente
+    "make_webhook": "configured" || "not configured"
   }
 }
 \`\`\`
+
+### GET /sse/:userId/:channel
+Establece una conexión Server-Sent Events (SSE) con el cliente (usado por el widget Web Chat).
 
 ## 🚀 Despliegue en Render
 
@@ -246,90 +261,25 @@ PORT=10000
 NODE_ENV=production
 REDIS_URL=redis://tu-redis-url:6379
 OPENAI_API_KEY=sk-tu-clave-openai
+CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name # Necesario para Web Chat Image Upload
 MAKE_WEBHOOK_URL=https://hook.make.com/tu-webhook
+# Opcional: OPENAI_WHISPER_PROMPT="Transcribe este mensaje..."
+# Opcional: OPENAI_VISION_PROMPT="Eres un asistente..."
 \`\`\`
 
-### 4. Redis en Render
+### 4. Configuración de Webhooks
 
-Puedes usar:
-- **Redis Labs** (recomendado)
-- **Upstash Redis**
-- **Redis interno de Render**
+Configura los webhooks en las plataformas correspondientes (Facebook, Instagram, WhatsApp) apuntando a la URL de tu servicio en Render + \`/webhook\` (ej: \`https://your-service-name.onrender.com/webhook\`).
 
-### 5. Desplegar
-
-Haz push a tu repositorio y Render desplegará automáticamente.
-
-## 🔧 Configuración de Make.com
-
-### Payload enviado a Make.com
-
-\`\`\`json
-{
-  "user_id": "123456789",
-  "channel": "whatsapp",
-  "text": "Mensaje combinado de todos los fragmentos recibidos en 20 segundos"
-}
-\`\`\`
-
-### Configurar webhook en Make.com
-
-1. Crea un nuevo escenario
-2. Agrega un trigger "Webhook"
-3. Copia la URL del webhook
-4. Configúrala en \`MAKE_WEBHOOK_URL\`
-
-## 🧪 Testing
-
-### Test del webhook
-
-\`\`\`bash
-curl -X POST http://localhost:3000/webhook \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "user_id": "test_user",
-    "channel": "web",
-    "type": "text",
-    "payload": { "text": "Mensaje de prueba" }
-  }'
-\`\`\`
-
-### Test de salud
-
-\`\`\`bash
-curl http://localhost:3000/health
-\`\`\`
-
-## 📊 Monitoreo
-
-El backend incluye logs detallados:
-
-- ✅ Mensajes procesados exitosamente
-- ⚠️ Mensajes filtrados (echo)
-- 🎵 Transcripciones de audio
-- ⏰ Timers iniciados/completados
-- 🚀 Envíos a Make.com
-- ❌ Errores y fallos
-
-## 🔒 Seguridad
-
-- Validación de entrada en todos los endpoints
-- Rate limiting (configurable)
-- Headers de seguridad con Helmet
-- Sanitización de datos
-- Logs sin información sensible
+Para Web Chat, integra el código del widget en tu página web, asegurándote de configurar \`widgetConfig.apiUrl\` a la URL de tu servicio en Render.
 
 ## 🤝 Contribuir
 
-1. Fork el repositorio
-2. Crea una rama feature (\`git checkout -b feature/nueva-funcionalidad\`)
-3. Commit tus cambios (\`git commit -am 'Agregar nueva funcionalidad'\`)
-4. Push a la rama (\`git push origin feature/nueva-funcionalidad\`)
-5. Crea un Pull Request
+¡Las contribuciones son bienvenidas! Por favor, abre un issue o envía un Pull Request con tus mejoras.
 
 ## 📄 Licencia
 
-MIT License - ver archivo [LICENSE](LICENSE) para detalles.
+Este proyecto está bajo la Licencia MIT. Consulta el archivo \`LICENSE\` para más detalles.
 
 ## 🆘 Soporte
 
