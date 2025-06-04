@@ -52,20 +52,33 @@ const validatePayload = (req, res, next) => {
 }
 
 // Endpoint principal para recibir mensajes
-router.post("/", limiter, upload.single("file"), validatePayload, async (req, res) => {
+router.post("/", limiter, upload.fields([
+  { name: 'audio', maxCount: 1 },
+  { name: 'image', maxCount: 1 }
+]), validatePayload, async (req, res) => {
   try {
     let payload = req.body
     // Si viene un archivo, agregar la información al payload
-    if (req.file) {
-      const isAudio = req.file.mimetype.startsWith('audio/');
-      const isImage = req.file.mimetype.startsWith('image/');
+    if (req.files) {
+      const audioFile = req.files['audio']?.[0];
+      const imageFile = req.files['image']?.[0];
       
-      payload = {
-        ...payload,
-        type: isAudio ? "audio" : isImage ? "image" : payload.type,
-        filePath: req.file.path,
-        originalName: req.file.originalname,
-        mimetype: req.file.mimetype,
+      if (audioFile) {
+        payload = {
+          ...payload,
+          type: "audio",
+          filePath: audioFile.path,
+          originalName: audioFile.originalname,
+          mimetype: audioFile.mimetype,
+        }
+      } else if (imageFile) {
+        payload = {
+          ...payload,
+          type: "image",
+          filePath: imageFile.path,
+          originalName: imageFile.originalname,
+          mimetype: imageFile.mimetype,
+        }
       }
     }
     console.log("📨 Webhook received:", JSON.stringify(payload, null, 2))
@@ -83,14 +96,16 @@ router.post("/", limiter, upload.single("file"), validatePayload, async (req, re
     if (!processedMessage) {
       console.log("⚠️  Message filtered out (echo or invalid)")
       // Limpiar archivo temporal si existe
-      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      if (req.files && audioFile && fs.existsSync(audioFile.path)) fs.unlinkSync(audioFile.path);
+      if (req.files && imageFile && fs.existsSync(imageFile.path)) fs.unlinkSync(imageFile.path);
       return res.status(200).json({ status: "filtered" })
     }
     console.log("✅ Processed message:", processedMessage)
     // Agregar al buffer (solo guardar, no procesar)
     await messageBuffer.addMessage(processedMessage)
     // Limpiar archivo temporal si existe
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    if (req.files && audioFile && fs.existsSync(audioFile.path)) fs.unlinkSync(audioFile.path);
+    if (req.files && imageFile && fs.existsSync(imageFile.path)) fs.unlinkSync(imageFile.path);
     // Responder inmediatamente con mensaje de procesamiento y datos SSE
     res.status(200).json({
       status: "processing",
