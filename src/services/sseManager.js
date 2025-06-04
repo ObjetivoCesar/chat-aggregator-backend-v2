@@ -7,6 +7,9 @@ class SSEManager {
   constructor() {
     // Mapa de conexiones activas por usuario y canal
     this.connections = new Map();
+    this.reconnectAttempts = new Map();
+    this.maxReconnectAttempts = 3;
+    this.reconnectDelay = 3000; // 3 segundos
     // Intervalo para enviar eventos keep-alive y limpiar conexiones muertas
     this.keepAliveInterval = 30000; // 30 segundos
     // Iniciar intervalo de keep-alive
@@ -35,13 +38,29 @@ class SSEManager {
       res,
       userId,
       channel,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      lastActivity: Date.now()
     });
     console.log(`🔌 New SSE connection registered: ${connectionKey}`);
+    // Configurar ping cada 30 segundos para mantener la conexión viva
+    const pingInterval = setInterval(() => {
+      if (this.connections.has(connectionKey)) {
+        try {
+          res.write(`data: ${JSON.stringify({ type: 'ping' })}\n\n`);
+          this.connections.get(connectionKey).lastActivity = Date.now();
+        } catch (error) {
+          console.error(`Error sending ping to ${connectionKey}:`, error);
+          this.removeConnection(connectionKey);
+        }
+      } else {
+        clearInterval(pingInterval);
+      }
+    }, 30000);
     // Manejar cierre de conexión
     res.on('close', () => {
-      this.connections.delete(connectionKey);
       console.log(`🔌 SSE connection closed: ${connectionKey}`);
+      this.removeConnection(connectionKey);
+      clearInterval(pingInterval);
     });
     return true;
   }
@@ -56,22 +75,22 @@ class SSEManager {
     const connectionKey = this.getConnectionKey(userId, channel);
     const connection = this.connections.get(connectionKey);
     if (!connection) {
-      console.log(`⚠️ No active SSE connection for ${connectionKey}`);
+      console.log(`⚠️ No active SSE connection for ${channel}:${userId}`);
       return false;
     }
     try {
-      const eventData = JSON.stringify({
+      const data = JSON.stringify({
         type,
         message,
-        timestamp: Date.now()
+        timestamp: new Date().toISOString()
       });
-      connection.res.write(`data: ${eventData}\n\n`);
-      console.log(`📤 SSE message sent to ${connectionKey}: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
+      connection.res.write(`data: ${data}\n\n`);
+      connection.lastActivity = Date.now();
+      console.log(`📡 Message sent to ${connectionKey}:`, message);
       return true;
     } catch (error) {
-      console.error(`❌ Error sending SSE message to ${connectionKey}:`, error);
-      // Si hay error, eliminar la conexión
-      this.connections.delete(connectionKey);
+      console.error(`❌ Error sending message to ${connectionKey}:`, error);
+      this.removeConnection(connectionKey);
       return false;
     }
   }
@@ -130,6 +149,34 @@ class SSEManager {
       connections: Array.from(this.connections.keys())
     };
   }
+  removeConnection(connectionKey) {
+    if (this.connections.has(connectionKey)) {
+      const connection = this.connections.get(connectionKey);
+      try {
+        connection.res.end();
+      } catch (error) {
+        console.error(`Error closing connection ${connectionKey}:`, error);
+      }
+      this.connections.delete(connectionKey);
+      console.log(`🔌 Connection removed: ${connectionKey}`);
+    }
+  }
+  // Limpiar conexiones inactivas
+  cleanupInactiveConnections() {
+    const now = Date.now();
+    const inactiveThreshold = 5 * 60 * 1000; // 5 minutos
+    for (const [key, connection] of this.connections) {
+      if (now - connection.lastActivity > inactiveThreshold) {
+        console.log(`🧹 Cleaning up inactive connection: ${key}`);
+        this.removeConnection(key);
+      }
+    }
+  }
 }
 // Exportar instancia única
-module.exports = new SSEManager(); 
+const sseManager = new SSEManager();
+// Inicializar limpieza periódica
+setInterval(() => {
+  sseManager.cleanupInactiveConnections();
+}, 60000); // Cada minuto
+module.exports = sseManager; 
