@@ -35,12 +35,7 @@ app.set('trust proxy', 1);
 
 // Configuración CORS específica
 const corsOptions = {
-  origin: [
-    'https://cdpn.io', 
-    'https://codepen.io', 
-    'http://localhost:3000',
-    'https://chat-aggregator-backend-v2.onrender.com'
-  ],
+  origin: '*', // Permitir todos los orígenes temporalmente para pruebas
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true,
@@ -62,7 +57,7 @@ app.use(helmet({
 // Manejo de preflight (OPTIONS)
 app.options('*', cors(corsOptions))
 
-const PORT = process.env.PORT || 3000
+const PORT = process.env.PORT || 10000 // Cambiar a 10000 para Render
 
 // Middleware
 app.use(express.json({ limit: "50mb" }))
@@ -76,10 +71,9 @@ app.use("/health", healthRoutes)
 app.use((err, req, res, next) => {
   console.error("Error:", err)
   if (err && err.message && err.message.includes('Redis')) {
-    return res.status(503).json({
-      error: "Redis unavailable",
-      message: "El servicio de almacenamiento temporal no está disponible. Intenta más tarde."
-    });
+    console.warn('Redis error:', err);
+    // Continuar sin Redis
+    return next();
   }
   res.status(500).json({
     error: "Internal server error",
@@ -107,11 +101,23 @@ const gracefulShutdown = async (signal) => {
     }
   }
   
-  process.exit(0)
+  // Dar tiempo para que las conexiones se cierren
+  setTimeout(() => {
+    process.exit(0)
+  }, 1000)
 }
 
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"))
 process.on("SIGINT", () => gracefulShutdown("SIGINT"))
+
+// Manejar errores no capturados
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 app.listen(PORT, () => {
   console.log(`🚀 Chat Aggregator Backend running on port ${PORT}`)
