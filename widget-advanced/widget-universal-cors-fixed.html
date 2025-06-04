@@ -1,0 +1,1636 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Widget Avanzado con SSE</title>
+  <style>
+    /* Estilos base que pueden ser heredados */
+    :root {
+      --primary-color: #E89D3C;
+      --secondary-color: #f0b266;
+      --text-color: #333;
+      --bg-color: #fff;
+      --light-bg: #f9f9f9;
+      --border-color: #ddd;
+      --error-color: #e74c3c;
+      --success-color: #27ae60;
+      --warning-color: #f39c12;
+      --border-radius: 10px;
+      --button-radius: 50%;
+      --font-family: Arial, sans-serif;
+    }
+
+    #chat-widget-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 350px;
+      z-index: 9999;
+      font-family: var(--font-family);
+    }
+    
+    #chat-widget-window {
+      display: none;
+      flex-direction: column;
+      height: 500px;
+      background: var(--bg-color);
+      border-radius: var(--border-radius);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    
+    #chat-widget-header {
+      background: var(--primary-color);
+      color: #fff;
+      padding: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    #chat-widget-title { 
+      font-weight: bold;
+      flex: 1;
+    }
+    
+    #chat-widget-controls {
+      display: flex;
+      align-items: center;
+    }
+    
+    #chat-widget-config {
+      background: transparent;
+      border: none;
+      color: white;
+      cursor: pointer;
+      font-size: 16px;
+      opacity: 0.8;
+      margin-right: 10px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+    }
+    
+    #chat-widget-config:hover {
+      opacity: 1;
+    }
+    
+    #chat-widget-close { 
+      cursor: pointer;
+      font-size: 20px;
+      line-height: 1;
+    }
+    
+    #chat-widget-messages {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      background: var(--light-bg);
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .chat-message {
+      max-width: 80%;
+      padding: 10px 15px;
+      margin-bottom: 10px;
+      border-radius: 18px;
+      word-wrap: break-word;
+    }
+    
+    .user-message {
+      align-self: flex-end;
+      background: var(--primary-color);
+      color: #fff;
+      border-bottom-right-radius: 5px;
+    }
+    
+    .bot-message {
+      align-self: flex-start;
+      background: #e8f0fe;
+      color: var(--text-color);
+      border-bottom-left-radius: 5px;
+    }
+    
+    .status-message {
+      align-self: center;
+      background: #f1f1f1;
+      color: #666;
+      font-style: italic;
+      font-size: 0.9em;
+      padding: 5px 10px;
+      border-radius: 10px;
+      margin: 5px 0;
+    }
+    
+    .error-message {
+      align-self: center;
+      background: #ffebee;
+      color: var(--error-color);
+      font-style: italic;
+      font-size: 0.9em;
+      padding: 5px 10px;
+      border-radius: 10px;
+      margin: 5px 0;
+    }
+    
+    #chat-widget-input-container {
+      display: flex;
+      padding: 10px;
+      border-top: 1px solid var(--border-color);
+      background: var(--bg-color);
+      align-items: flex-end;
+    }
+    
+    #chat-widget-textarea-wrapper {
+      flex: 1;
+      position: relative;
+    }
+    
+    #chat-widget-textarea {
+      width: 100%;
+      padding: 10px 15px;
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      outline: none;
+      font-size: 14px;
+      resize: none;
+      max-height: 100px;
+      min-height: 40px;
+      overflow-y: auto;
+      font-family: var(--font-family);
+    }
+    
+    #chat-widget-actions {
+      display: flex;
+      margin-left: 10px;
+    }
+    
+    .widget-action-button {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--button-radius);
+      background: var(--primary-color);
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      margin-left: 5px;
+    }
+    
+    #chat-widget-button {
+      width: 60px;
+      height: 60px;
+      border-radius: var(--button-radius);
+      background: var(--primary-color);
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      align-self: flex-end;
+      font-size: 24px;
+    }
+    
+    /* Estilos para grabación de audio */
+    #chat-widget-audio-container {
+      display: none;
+      position: absolute;
+      bottom: 70px;
+      right: 20px;
+      background: var(--bg-color);
+      border-radius: var(--border-radius);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      padding: 15px;
+      width: 300px;
+    }
+    
+    #chat-widget-audio-timer {
+      text-align: center;
+      font-size: 24px;
+      margin-bottom: 10px;
+      color: var(--primary-color);
+    }
+    
+    #chat-widget-audio-controls {
+      display: flex;
+      justify-content: space-around;
+    }
+    
+    .audio-control-button {
+      width: 50px;
+      height: 50px;
+      border-radius: var(--button-radius);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      font-size: 20px;
+    }
+    
+    #chat-widget-audio-record {
+      background: var(--error-color);
+      color: white;
+    }
+    
+    #chat-widget-audio-stop {
+      background: var(--warning-color);
+      color: white;
+    }
+    
+    #chat-widget-audio-send {
+      background: var(--success-color);
+      color: white;
+    }
+    
+    #chat-widget-audio-cancel {
+      background: #95a5a6;
+      color: white;
+    }
+    
+    #chat-widget-audio-preview {
+      margin-top: 10px;
+      width: 100%;
+    }
+    
+    .recording-pulse {
+      animation: pulse 1.5s infinite;
+    }
+    
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+    
+    /* Estilos para botones en mensajes */
+    .chat-button {
+      display: inline-block;
+      padding: 8px 15px;
+      margin: 5px 0;
+      background: var(--primary-color);
+      color: white;
+      border-radius: 5px;
+      text-decoration: none;
+      font-weight: bold;
+      transition: background 0.3s;
+    }
+    
+    .chat-button:hover {
+      background: var(--secondary-color);
+    }
+    
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      margin: 5px 0;
+      align-self: flex-start;
+    }
+    
+    .typing-indicator span {
+      height: 8px;
+      width: 8px;
+      margin: 0 1px;
+      background-color: #9E9E9E;
+      display: block;
+      border-radius: 50%;
+      opacity: 0.4;
+    }
+    
+    .typing-indicator span:nth-of-type(1) {
+      animation: 1s blink infinite 0.3333s;
+    }
+    
+    .typing-indicator span:nth-of-type(2) {
+      animation: 1s blink infinite 0.6666s;
+    }
+    
+    .typing-indicator span:nth-of-type(3) {
+      animation: 1s blink infinite 0.9999s;
+    }
+    
+    @keyframes blink {
+      50% {
+        opacity: 1;
+      }
+    }
+
+    /* Estilos para Markdown */
+    .bot-message strong, .bot-message b {
+      font-weight: bold;
+    }
+    
+    .bot-message em, .bot-message i {
+      font-style: italic;
+    }
+    
+    .bot-message code {
+      font-family: monospace;
+      background: rgba(0,0,0,0.05);
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    
+    .bot-message pre {
+      background: rgba(0,0,0,0.05);
+      padding: 10px;
+      border-radius: 5px;
+      overflow-x: auto;
+      font-family: monospace;
+    }
+    
+    .bot-message ul, .bot-message ol {
+      padding-left: 20px;
+      margin: 5px 0;
+    }
+    
+    .bot-message blockquote {
+      border-left: 3px solid var(--primary-color);
+      padding-left: 10px;
+      margin-left: 5px;
+      color: #666;
+    }
+    
+    /* Configuración de colores */
+    #chat-widget-config-panel {
+      display: none;
+      position: absolute;
+      top: 50px;
+      right: 10px;
+      background: white;
+      border-radius: 5px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      padding: 15px;
+      z-index: 10000;
+      width: 250px;
+    }
+    
+    .config-group {
+      margin-bottom: 10px;
+    }
+    
+    .config-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      font-size: 12px;
+    }
+    
+    .config-group input {
+      width: 100%;
+      padding: 5px;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+    }
+    
+    .config-actions {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 15px;
+    }
+    
+    .config-button {
+      padding: 5px 10px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    
+    .config-save {
+      background: var(--primary-color);
+      color: white;
+    }
+    
+    .config-reset {
+      background: #f1f1f1;
+      color: #333;
+    }
+    
+    /* Estilos para la conexión */
+    .connection-status {
+      position: absolute;
+      top: 5px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      padding: 2px 5px;
+      border-radius: 10px;
+      background: rgba(0,0,0,0.1);
+      color: white;
+      opacity: 0.7;
+      display: none;
+    }
+    
+    .connection-status.online {
+      background: var(--success-color);
+    }
+    
+    .connection-status.offline {
+      background: var(--error-color);
+    }
+    
+    .connection-status.connecting {
+      background: var(--warning-color);
+    }
+    
+    /* Tooltip para errores */
+    .error-tooltip {
+      position: relative;
+      display: inline-block;
+      margin-left: 5px;
+      cursor: help;
+    }
+    
+    .error-tooltip .tooltip-text {
+      visibility: hidden;
+      width: 200px;
+      background-color: #555;
+      color: #fff;
+      text-align: center;
+      border-radius: 6px;
+      padding: 5px;
+      position: absolute;
+      z-index: 1;
+      bottom: 125%;
+      left: 50%;
+      margin-left: -100px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      font-size: 12px;
+      font-style: normal;
+    }
+    
+    .error-tooltip:hover .tooltip-text {
+      visibility: visible;
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div id="chat-widget-container">
+    <div id="chat-widget-window">
+      <div id="chat-widget-header">
+        <span id="chat-widget-title">Asistente Virtual</span>
+        <div id="chat-widget-controls">
+          <button id="chat-widget-config">⚙️</button>
+          <span id="chat-widget-close">&times;</span>
+        </div>
+        <div id="connection-status" class="connection-status">Conectando...</div>
+      </div>
+      <div id="chat-widget-messages"></div>
+      <div id="chat-widget-input-container">
+        <div id="chat-widget-textarea-wrapper">
+          <textarea id="chat-widget-textarea" placeholder="Escribe un mensaje..." rows="1"></textarea>
+        </div>
+        <div id="chat-widget-actions">
+          <div id="chat-widget-image" class="widget-action-button">🖼️</div>
+          <div id="chat-widget-mic" class="widget-action-button">🎤</div>
+          <div id="chat-widget-send" class="widget-action-button">➤</div>
+        </div>
+      </div>
+    </div>
+    <div id="chat-widget-button">💬</div>
+    
+    <!-- Contenedor para grabación de audio -->
+    <div id="chat-widget-audio-container">
+      <div id="chat-widget-audio-timer">00:00</div>
+      <div id="chat-widget-audio-controls">
+        <div id="chat-widget-audio-record" class="audio-control-button">⏺</div>
+        <div id="chat-widget-audio-stop" class="audio-control-button" style="display:none">⏹</div>
+        <div id="chat-widget-audio-send" class="audio-control-button" style="display:none">✓</div>
+        <div id="chat-widget-audio-cancel" class="audio-control-button">✕</div>
+      </div>
+      <audio id="chat-widget-audio-preview" controls style="display:none"></audio>
+    </div>
+    
+    <!-- Panel de configuración -->
+    <div id="chat-widget-config-panel">
+      <div class="config-group">
+        <label for="config-primary-color">Color Principal</label>
+        <input type="color" id="config-primary-color" value="#E89D3C">
+      </div>
+      <div class="config-group">
+        <label for="config-title">Título del Widget</label>
+        <input type="text" id="config-title" value="Asistente Virtual">
+      </div>
+      <div class="config-group">
+        <label for="config-welcome">Mensaje de Bienvenida</label>
+        <input type="text" id="config-welcome" value="¡Hola! Soy tu asistente virtual. ¿En qué puedo ayudarte?">
+      </div>
+      <div class="config-actions">
+        <button class="config-button config-reset">Restablecer</button>
+        <button class="config-button config-save">Guardar</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Input file oculto para imágenes -->
+  <input type="file" id="chat-widget-image-input" accept="image/*" style="display:none" />
+  
+  <script>
+    (function() {
+      // Configuración del widget
+      const widgetConfig = {
+        // IMPORTANTE: Reemplaza esta URL con la URL de tu backend
+        apiUrl: 'https://chat-aggregator-backend-v2.onrender.com/webhook',
+        title: 'Asistente Virtual',
+        welcomeMessage: '¡Hola! Soy tu asistente virtual. ¿En qué puedo ayudarte?',
+        maxAudioDuration: 60, // segundos
+        primaryColor: '#E89D3C',
+        secondaryColor: '#f0b266',
+        maxRetries: 3,
+        retryDelay: 2000 // ms
+      };
+      
+      // Elementos del DOM
+      const elements = {
+        container: document.getElementById('chat-widget-container'),
+        button: document.getElementById('chat-widget-button'),
+        window: document.getElementById('chat-widget-window'),
+        header: document.getElementById('chat-widget-header'),
+        title: document.getElementById('chat-widget-title'),
+        close: document.getElementById('chat-widget-close'),
+        messages: document.getElementById('chat-widget-messages'),
+        textarea: document.getElementById('chat-widget-textarea'),
+        send: document.getElementById('chat-widget-send'),
+        mic: document.getElementById('chat-widget-mic'),
+        audioContainer: document.getElementById('chat-widget-audio-container'),
+        audioTimer: document.getElementById('chat-widget-audio-timer'),
+        audioRecord: document.getElementById('chat-widget-audio-record'),
+        audioStop: document.getElementById('chat-widget-audio-stop'),
+        audioSend: document.getElementById('chat-widget-audio-send'),
+        audioCancel: document.getElementById('chat-widget-audio-cancel'),
+        audioPreview: document.getElementById('chat-widget-audio-preview'),
+        config: document.getElementById('chat-widget-config'),
+        configPanel: document.getElementById('chat-widget-config-panel'),
+        configPrimaryColor: document.getElementById('config-primary-color'),
+        configTitle: document.getElementById('config-title'),
+        configWelcome: document.getElementById('config-welcome'),
+        configSave: document.querySelector('.config-save'),
+        configReset: document.querySelector('.config-reset'),
+        connectionStatus: document.getElementById('connection-status')
+      };
+      
+      // Variables para SSE
+      let eventSource = null;
+      let isWaitingForResponse = false;
+      let typingIndicator = null;
+      let connectionStatus = 'disconnected';
+      let retryCount = 0;
+      
+      // Variables para grabación de audio
+      let mediaRecorder = null;
+      let audioChunks = [];
+      let audioBlob = null;
+      let audioUrl = null;
+      let recordingTimer = null;
+      let recordingDuration = 0;
+      let isRecording = false;
+      
+      // Generar o recuperar user_id persistente
+      let userId = localStorage.getItem('chat_widget_user_id');
+      if (!userId) {
+        userId = 'user_' + Math.random().toString(36).substring(2, 15);
+        localStorage.setItem('chat_widget_user_id', userId);
+      }
+      
+      // Actualizar estado de conexión
+      function updateConnectionStatus(status, message = '') {
+        connectionStatus = status;
+        elements.connectionStatus.className = 'connection-status ' + status;
+        
+        switch(status) {
+          case 'online':
+            elements.connectionStatus.textContent = 'Conectado';
+            setTimeout(() => {
+              elements.connectionStatus.style.display = 'none';
+            }, 2000);
+            break;
+          case 'offline':
+            elements.connectionStatus.textContent = 'Desconectado';
+            elements.connectionStatus.style.display = 'block';
+            break;
+          case 'connecting':
+            elements.connectionStatus.textContent = 'Conectando...';
+            elements.connectionStatus.style.display = 'block';
+            break;
+          case 'error':
+            elements.connectionStatus.textContent = 'Error de conexión';
+            elements.connectionStatus.style.display = 'block';
+            break;
+        }
+      }
+      
+      // Función para crear un proxy JSONP para evitar problemas de CORS
+      function createJSONPRequest(url, params, callback) {
+        // Crear un nombre de función único para el callback
+        const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
+        
+        // Crear la URL con los parámetros y el callback
+        let fullUrl = url + '?callback=' + callbackName;
+        for (const key in params) {
+          if (params.hasOwnProperty(key)) {
+            fullUrl += '&' + key + '=' + encodeURIComponent(params[key]);
+          }
+        }
+        
+        // Crear el script element
+        const script = document.createElement('script');
+        script.src = fullUrl;
+        
+        // Definir el callback en el objeto window
+        window[callbackName] = function(data) {
+          // Limpiar: eliminar el script y el callback
+          document.body.removeChild(script);
+          callback(data);
+          delete window[callbackName];
+        };
+        
+        // Añadir el script al DOM para iniciar la solicitud
+        document.body.appendChild(script);
+      }
+      
+      // Verificar conexión con el backend usando JSONP para evitar CORS
+      function checkConnection() {
+        updateConnectionStatus('connecting');
+        
+        // Intentar una solicitud simple para verificar la conexión
+        fetch(widgetConfig.apiUrl + '/health', { 
+          method: 'GET',
+          mode: 'no-cors' // Esto evita errores CORS pero no nos da información sobre la respuesta
+        })
+        .then(() => {
+          // Si llegamos aquí, al menos pudimos hacer la solicitud
+          updateConnectionStatus('online');
+          retryCount = 0;
+        })
+        .catch(error => {
+          console.error('Error checking connection:', error);
+          updateConnectionStatus('offline');
+          
+          if (retryCount < widgetConfig.maxRetries) {
+            retryCount++;
+            setTimeout(checkConnection, widgetConfig.retryDelay * retryCount);
+          }
+        });
+      }
+      
+      // Cargar configuración guardada
+      function loadSavedConfig() {
+        const savedConfig = localStorage.getItem('chat_widget_config');
+        if (savedConfig) {
+          try {
+            const config = JSON.parse(savedConfig);
+            if (config.primaryColor) {
+              widgetConfig.primaryColor = config.primaryColor;
+              elements.configPrimaryColor.value = config.primaryColor;
+            }
+            if (config.title) {
+              widgetConfig.title = config.title;
+              elements.configTitle.value = config.title;
+              elements.title.textContent = config.title;
+            }
+            if (config.welcomeMessage) {
+              widgetConfig.welcomeMessage = config.welcomeMessage;
+              elements.configWelcome.value = config.welcomeMessage;
+            }
+            
+            // Aplicar colores
+            applyColors(widgetConfig.primaryColor);
+          } catch (e) {
+            console.error('Error loading saved config:', e);
+          }
+        }
+      }
+      
+      // Guardar configuración
+      function saveConfig() {
+        const config = {
+          primaryColor: elements.configPrimaryColor.value,
+          title: elements.configTitle.value,
+          welcomeMessage: elements.configWelcome.value
+        };
+        
+        localStorage.setItem('chat_widget_config', JSON.stringify(config));
+        
+        // Actualizar configuración actual
+        widgetConfig.primaryColor = config.primaryColor;
+        widgetConfig.title = config.title;
+        widgetConfig.welcomeMessage = config.welcomeMessage;
+        
+        // Actualizar UI
+        elements.title.textContent = config.title;
+        applyColors(config.primaryColor);
+        
+        // Cerrar panel
+        elements.configPanel.style.display = 'none';
+      }
+      
+      // Restablecer configuración
+      function resetConfig() {
+        // Valores por defecto
+        const defaultConfig = {
+          primaryColor: '#E89D3C',
+          title: 'Asistente Virtual',
+          welcomeMessage: '¡Hola! Soy tu asistente virtual. ¿En qué puedo ayudarte?'
+        };
+        
+        // Actualizar inputs
+        elements.configPrimaryColor.value = defaultConfig.primaryColor;
+        elements.configTitle.value = defaultConfig.title;
+        elements.configWelcome.value = defaultConfig.welcomeMessage;
+        
+        // Guardar configuración
+        saveConfig();
+      }
+      
+      // Aplicar colores
+      function applyColors(primaryColor) {
+        const root = document.documentElement;
+        root.style.setProperty('--primary-color', primaryColor);
+        
+        // Calcular color secundario (ligeramente más claro)
+        const secondaryColor = adjustColor(primaryColor, 20);
+        root.style.setProperty('--secondary-color', secondaryColor);
+      }
+      
+      // Detectar y aplicar tema del sitio web
+      function detectAndApplyTheme() {
+        // Si hay configuración guardada, usarla en lugar de detectar
+        if (localStorage.getItem('chat_widget_config')) {
+          loadSavedConfig();
+          return;
+        }
+        
+        try {
+          const computedStyle = window.getComputedStyle(document.body);
+          const root = document.documentElement;
+          
+          // Intentar detectar color primario del sitio
+          let primaryColor = null;
+          
+          // 1. Buscar en Elementor
+          const elementorElements = document.querySelectorAll(
+            '.elementor-button, .elementor-heading-title, .elementor-widget-button a, ' +
+            '[class*="elementor-button"], [class*="elementor-color-"], ' +
+            '.elementor-element [style*="background-color"]'
+          );
+          
+          if (elementorElements.length > 0) {
+            for (const element of elementorElements) {
+              const style = window.getComputedStyle(element);
+              let color = style.backgroundColor;
+              
+              // Si no tiene background, probar con color
+              if (!color || color === 'rgba(0, 0, 0, 0)' || color === 'transparent') {
+                color = style.color;
+              }
+              
+              // Ignorar transparentes o blancos/negros
+              if (color && color !== 'transparent' && color !== 'rgba(0, 0, 0, 0)' && 
+                  color !== 'rgb(255, 255, 255)' && color !== 'rgb(0, 0, 0)') {
+                primaryColor = color;
+                break;
+              }
+            }
+          }
+          
+          // 2. Si no se encontró en Elementor, buscar en otros elementos comunes
+          if (!primaryColor) {
+            const possiblePrimaryElements = [
+              ...document.querySelectorAll('header, nav, .header, .navbar, button, .btn, a.button'),
+              ...document.querySelectorAll('[class*="primary"], [class*="main"], [class*="brand"]'),
+              ...document.querySelectorAll('[style*="background-color"]')
+            ];
+            
+            for (const element of possiblePrimaryElements) {
+              const style = window.getComputedStyle(element);
+              const bgColor = style.backgroundColor;
+              
+              // Ignorar transparentes o blancos/negros
+              if (bgColor && bgColor !== 'transparent' && bgColor !== 'rgba(0, 0, 0, 0)' && 
+                  bgColor !== 'rgb(255, 255, 255)' && bgColor !== 'rgb(0, 0, 0)') {
+                primaryColor = bgColor;
+                break;
+              }
+            }
+          }
+          
+          // 3. Si aún no se encontró, usar enlaces
+          if (!primaryColor) {
+            const linkElements = document.querySelectorAll('a');
+            if (linkElements.length > 0) {
+              const linkStyle = window.getComputedStyle(linkElements[0]);
+              primaryColor = linkStyle.color;
+            }
+          }
+          
+          // Si se encontró un color, aplicarlo
+          if (primaryColor && primaryColor !== 'rgb(0, 0, 0)' && primaryColor !== 'rgb(255, 255, 255)') {
+            widgetConfig.primaryColor = primaryColor;
+            elements.configPrimaryColor.value = rgbToHex(primaryColor);
+            applyColors(primaryColor);
+          } else {
+            // Usar color por defecto
+            applyColors(widgetConfig.primaryColor);
+          }
+          
+          // Aplicar fuente del sitio
+          const fontFamily = computedStyle.fontFamily;
+          if (fontFamily) {
+            root.style.setProperty('--font-family', fontFamily);
+          }
+        } catch (e) {
+          console.error('Error detecting theme:', e);
+          // Usar color por defecto en caso de error
+          applyColors(widgetConfig.primaryColor);
+        }
+      }
+      
+      // Convertir RGB a Hex
+      function rgbToHex(rgb) {
+        // Extraer valores RGB
+        const rgbMatch = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+        if (rgbMatch) {
+          const r = parseInt(rgbMatch[1]);
+          const g = parseInt(rgbMatch[2]);
+          const b = parseInt(rgbMatch[3]);
+          
+          return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        }
+        
+        return rgb;
+      }
+      
+      // Ajustar color (aclarar u oscurecer)
+      function adjustColor(color, percent) {
+        // Convertir color a formato RGB si es necesario
+        if (color.startsWith('#')) {
+          const r = parseInt(color.slice(1, 3), 16);
+          const g = parseInt(color.slice(3, 5), 16);
+          const b = parseInt(color.slice(5, 7), 16);
+          
+          // Ajustar cada componente
+          const adjustR = Math.min(255, Math.max(0, r + percent));
+          const adjustG = Math.min(255, Math.max(0, g + percent));
+          const adjustB = Math.min(255, Math.max(0, b + percent));
+          
+          // Convertir de nuevo a hex
+          return '#' + ((1 << 24) + (adjustR << 16) + (adjustG << 8) + adjustB).toString(16).slice(1);
+        }
+        
+        if (color.startsWith('rgb')) {
+          const rgbMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+          if (rgbMatch) {
+            const r = parseInt(rgbMatch[1]);
+            const g = parseInt(rgbMatch[2]);
+            const b = parseInt(rgbMatch[3]);
+            
+            // Ajustar cada componente
+            const adjustR = Math.min(255, Math.max(0, r + percent));
+            const adjustG = Math.min(255, Math.max(0, g + percent));
+            const adjustB = Math.min(255, Math.max(0, b + percent));
+            
+            return `rgb(${adjustR}, ${adjustG}, ${adjustB})`;
+          }
+        }
+        
+        // Si no se pudo ajustar, devolver el color original
+        return color;
+      }
+      
+      // Formatear tiempo (mm:ss)
+      function formatTime(seconds) {
+        const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+        return `${mins}:${secs}`;
+      }
+      
+      // Iniciar grabación de audio
+      function startRecording() {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(stream => {
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            
+            mediaRecorder.addEventListener('dataavailable', event => {
+              audioChunks.push(event.data);
+            });
+            
+            mediaRecorder.addEventListener('stop', () => {
+              // Detener todos los tracks del stream
+              stream.getTracks().forEach(track => track.stop());
+              
+              // Crear blob y URL
+              audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+              
+              // Convertir a MP3 usando MediaRecorder y Web Audio API
+              // Nota: En un entorno real, la conversión a MP3 requeriría una biblioteca adicional
+              // o procesamiento en el servidor. Aquí usamos WebM que es compatible con la mayoría de navegadores.
+              
+              // Crear URL para previsualización
+              if (audioUrl) {
+                URL.revokeObjectURL(audioUrl);
+              }
+              audioUrl = URL.createObjectURL(audioBlob);
+              elements.audioPreview.src = audioUrl;
+              elements.audioPreview.style.display = 'block';
+              
+              // Mostrar controles de envío
+              elements.audioRecord.style.display = 'none';
+              elements.audioStop.style.display = 'none';
+              elements.audioSend.style.display = 'block';
+            });
+            
+            // Iniciar grabación
+            mediaRecorder.start();
+            isRecording = true;
+            
+            // Mostrar controles de grabación
+            elements.audioRecord.style.display = 'none';
+            elements.audioStop.style.display = 'block';
+            elements.audioRecord.classList.add('recording-pulse');
+            
+            // Iniciar temporizador
+            recordingDuration = 0;
+            elements.audioTimer.textContent = formatTime(recordingDuration);
+            
+            recordingTimer = setInterval(() => {
+              recordingDuration++;
+              elements.audioTimer.textContent = formatTime(recordingDuration);
+              
+              // Detener automáticamente si se alcanza el límite
+              if (recordingDuration >= widgetConfig.maxAudioDuration) {
+                stopRecording();
+              }
+            }, 1000);
+          })
+          .catch(error => {
+            console.error('Error accessing microphone:', error);
+            addErrorMessage('No se pudo acceder al micrófono. Verifica los permisos.');
+            closeAudioRecorder();
+          });
+      }
+      
+      // Detener grabación de audio
+      function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+          isRecording = false;
+          
+          // Detener temporizador
+          clearInterval(recordingTimer);
+          elements.audioRecord.classList.remove('recording-pulse');
+        }
+      }
+      
+      // Enviar audio grabado
+      function sendRecordedAudio() {
+        if (!audioBlob) return;
+        
+        // Crear un archivo a partir del blob
+        const audioFile = new File([audioBlob], 'recording.webm', { 
+          type: 'audio/webm',
+          lastModified: Date.now()
+        });
+        
+        // Enviar el archivo
+        sendAudioFile(audioFile);
+        
+        // Cerrar grabadora
+        closeAudioRecorder();
+      }
+      
+      // Cerrar grabadora de audio
+      function closeAudioRecorder() {
+        // Detener grabación si está activa
+        if (isRecording) {
+          stopRecording();
+        }
+        
+        // Limpiar recursos
+        if (audioUrl) {
+          URL.revokeObjectURL(audioUrl);
+          audioUrl = null;
+        }
+        
+        audioBlob = null;
+        elements.audioPreview.src = '';
+        elements.audioPreview.style.display = 'none';
+        
+        // Restablecer controles
+        elements.audioRecord.style.display = 'block';
+        elements.audioStop.style.display = 'none';
+        elements.audioSend.style.display = 'none';
+        
+        // Ocultar contenedor
+        elements.audioContainer.style.display = 'none';
+      }
+      
+      // Mostrar grabadora de audio
+      function showAudioRecorder() {
+        elements.audioContainer.style.display = 'block';
+      }
+      
+      // Procesar Markdown
+      function parseMarkdown(text) {
+        if (!text) return '';
+        
+        // Escapar HTML
+        let html = text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        
+        // Procesar negritas
+        html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/__(.*?)__/g, '<strong>$1</strong>');
+        
+        // Procesar cursivas
+        html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        html = html.replace(/_(.*?)_/g, '<em>$1</em>');
+        
+        // Procesar código inline
+        html = html.replace(/`(.*?)`/g, '<code>$1</code>');
+        
+        // Procesar bloques de código
+        html = html.replace(/```([\s\S]*?)```/g, '<pre>$1</pre>');
+        
+        // Procesar listas
+        const listItems = html.match(/^[\s]*[-*+][\s]+(.*?)$/gm);
+        if (listItems) {
+          listItems.forEach(item => {
+            const listItem = item.replace(/^[\s]*[-*+][\s]+(.*)$/, '<li>$1</li>');
+            html = html.replace(item, listItem);
+          });
+          html = html.replace(/<li>(.*?)<\/li>(?:\s*<li>)/g, '<li>$1</li><li>');
+          html = html.replace(/(?:<\/li>\s*)<li>(.*?)<\/li>/g, '</li><li>$1</li>');
+          html = html.replace(/(?:^|<\/pre>|<\/p>)\s*<li>/g, '$&<ul>');
+          html = html.replace(/<\/li>\s*(?:$|<pre>|<p>)/g, '</ul>$&');
+        }
+        
+        // Procesar citas
+        html = html.replace(/^>[\s]+(.*?)$/gm, '<blockquote>$1</blockquote>');
+        
+        // Procesar formato especial para botones
+        html = processMessageButtons(html);
+        
+        // Procesar saltos de línea
+        html = html.replace(/\n/g, '<br>');
+        
+        return html;
+      }
+      
+      // Añadir mensaje del bot
+      function addBotMessage(message) {
+        const msg = document.createElement('div');
+        msg.className = 'chat-message bot-message';
+        
+        // Procesar Markdown y formato especial para botones
+        const processedMessage = parseMarkdown(message);
+        
+        msg.innerHTML = processedMessage;
+        elements.messages.appendChild(msg);
+        elements.messages.scrollTop = elements.messages.scrollHeight;
+        return msg;
+      }
+      
+      // Procesar formato de botones en mensajes
+      function processMessageButtons(message) {
+        // Buscar patrones [button:Texto](url)
+        const buttonRegex = /\[button:(.*?)\]\((.*?)\)/g;
+        return message.replace(buttonRegex, (match, text, url) => {
+          return `<a href="${url}" class="chat-button" target="_blank">${text}</a>`;
+        });
+      }
+      
+      // Añadir mensaje del usuario
+      function addUserMessage(message, isAudio = false) {
+        const msg = document.createElement('div');
+        msg.className = 'chat-message user-message';
+        
+        if (isAudio) {
+          const audioIcon = document.createElement('span');
+          audioIcon.textContent = '🎵 ';
+          msg.appendChild(audioIcon);
+        }
+        
+        const textNode = document.createTextNode(message);
+        msg.appendChild(textNode);
+        
+        elements.messages.appendChild(msg);
+        elements.messages.scrollTop = elements.messages.scrollHeight;
+        return msg;
+      }
+      
+      // Añadir mensaje de estado
+      function addStatusMessage(message) {
+        const msg = document.createElement('div');
+        msg.className = 'status-message';
+        msg.textContent = message;
+        elements.messages.appendChild(msg);
+        elements.messages.scrollTop = elements.messages.scrollHeight;
+        return msg;
+      }
+      
+      // Añadir mensaje de error
+      function addErrorMessage(message, details = '') {
+        const msg = document.createElement('div');
+        msg.className = 'error-message';
+        
+        // Mensaje principal
+        const textNode = document.createTextNode(message);
+        msg.appendChild(textNode);
+        
+        // Si hay detalles, añadir tooltip
+        if (details) {
+          const tooltip = document.createElement('span');
+          tooltip.className = 'error-tooltip';
+          tooltip.textContent = ' ℹ️';
+          
+          const tooltipText = document.createElement('span');
+          tooltipText.className = 'tooltip-text';
+          tooltipText.textContent = details;
+          
+          tooltip.appendChild(tooltipText);
+          msg.appendChild(tooltip);
+        }
+        
+        elements.messages.appendChild(msg);
+        elements.messages.scrollTop = elements.messages.scrollHeight;
+        return msg;
+      }
+      
+      // Mostrar indicador de escritura
+      function showTypingIndicator() {
+        // Si ya existe un indicador, no crear otro
+        if (typingIndicator) return;
+        
+        typingIndicator = document.createElement('div');
+        typingIndicator.className = 'typing-indicator';
+        typingIndicator.innerHTML = '<span></span><span></span><span></span>';
+        elements.messages.appendChild(typingIndicator);
+        elements.messages.scrollTop = elements.messages.scrollHeight;
+      }
+      
+      // Ocultar indicador de escritura
+      function hideTypingIndicator() {
+        if (typingIndicator) {
+          typingIndicator.remove();
+          typingIndicator = null;
+        }
+      }
+      
+      // Conectar a SSE con manejo de CORS
+      function connectSSE(userId, channel = 'web') {
+        // Cerrar conexión existente si hay
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        
+        updateConnectionStatus('connecting');
+        
+        try {
+          // Crear un iframe oculto para evitar problemas de CORS
+          const iframeId = 'sse-iframe-' + Math.random().toString(36).substring(2, 15);
+          const iframe = document.createElement('iframe');
+          iframe.id = iframeId;
+          iframe.style.display = 'none';
+          document.body.appendChild(iframe);
+          
+          // Crear un script que establezca la conexión SSE dentro del iframe
+          const baseUrl = widgetConfig.apiUrl.replace('/webhook', '');
+          const sseUrl = `${baseUrl}/webhook/sse/${userId}?channel=${channel}`;
+          const script = document.createElement('script');
+          script.textContent = `
+            const eventSource = new EventSource("${sseUrl}");
+            
+            eventSource.onopen = function() {
+              window.parent.postMessage({type: "sse-open"}, "*");
+            };
+            
+            eventSource.onmessage = function(event) {
+              window.parent.postMessage({type: "sse-message", data: event.data}, "*");
+            };
+            
+            eventSource.onerror = function() {
+              window.parent.postMessage({type: "sse-error"}, "*");
+            };
+            
+            window.addEventListener("message", function(event) {
+              if (event.data === "sse-close") {
+                eventSource.close();
+                window.parent.postMessage({type: "sse-closed"}, "*");
+              }
+            });
+          `;
+          
+          // Añadir el script al iframe
+          iframe.contentDocument.body.appendChild(script);
+          
+          // Escuchar mensajes del iframe
+          window.addEventListener("message", function(event) {
+            if (event.data && event.data.type) {
+              switch(event.data.type) {
+                case "sse-open":
+                  console.log('SSE connection established');
+                  updateConnectionStatus('online');
+                  break;
+                case "sse-message":
+                  try {
+                    const data = JSON.parse(event.data.data);
+                    console.log('SSE message received:', data);
+                    
+                    // Ocultar indicador de escritura
+                    hideTypingIndicator();
+                    
+                    // Procesar según tipo de mensaje
+                    if (data.type === 'message') {
+                      // Mensaje normal
+                      addBotMessage(data.message);
+                      isWaitingForResponse = false;
+                    } else if (data.type === 'status') {
+                      // Mensaje de estado
+                      addStatusMessage(data.message);
+                    } else if (data.type === 'error') {
+                      // Mensaje de error
+                      addErrorMessage(data.message);
+                      isWaitingForResponse = false;
+                    }
+                  } catch (error) {
+                    console.error('Error processing SSE message:', error);
+                    hideTypingIndicator();
+                    addErrorMessage('Error al procesar la respuesta', 'El servidor envió una respuesta que no se pudo interpretar correctamente.');
+                    isWaitingForResponse = false;
+                  }
+                  break;
+                case "sse-error":
+                  console.error('SSE connection error');
+                  hideTypingIndicator();
+                  updateConnectionStatus('error');
+                  
+                  // Reconectar solo si estamos esperando respuesta
+                  if (isWaitingForResponse) {
+                    setTimeout(() => {
+                      if (isWaitingForResponse) {
+                        connectSSE(userId, channel);
+                      }
+                    }, 3000);
+                  } else {
+                    // Cerrar iframe
+                    document.body.removeChild(iframe);
+                    updateConnectionStatus('offline');
+                  }
+                  break;
+                case "sse-closed":
+                  // Cerrar iframe
+                  document.body.removeChild(iframe);
+                  break;
+              }
+            }
+          });
+          
+          // Guardar referencia al iframe para poder cerrarlo después
+          eventSource = {
+            close: function() {
+              iframe.contentWindow.postMessage("sse-close", "*");
+            }
+          };
+        } catch (error) {
+          console.error('Error creating SSE connection:', error);
+          hideTypingIndicator();
+          updateConnectionStatus('error');
+          addErrorMessage('Error de conexión', 'No se pudo establecer conexión con el servidor. Es posible que haya problemas de CORS.');
+        }
+      }
+      
+      // Enviar mensaje de texto con manejo de CORS
+      async function sendTextMessage(text) {
+        if (!text.trim()) return;
+        
+        // Mostrar mensaje del usuario
+        addUserMessage(text);
+        
+        // Mostrar indicador de escritura
+        showTypingIndicator();
+        
+        try {
+          // Crear un iframe oculto para evitar problemas de CORS
+          const iframeId = 'post-iframe-' + Math.random().toString(36).substring(2, 15);
+          const iframe = document.createElement('iframe');
+          iframe.id = iframeId;
+          iframe.style.display = 'none';
+          document.body.appendChild(iframe);
+          
+          // Crear un formulario dentro del iframe
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = widgetConfig.apiUrl;
+          form.enctype = 'application/x-www-form-urlencoded';
+          
+          // Añadir campos al formulario
+          const fields = {
+            user_id: userId,
+            channel: 'web',
+            type: 'text',
+            text: text
+          };
+          
+          for (const key in fields) {
+            if (fields.hasOwnProperty(key)) {
+              const input = document.createElement('input');
+              input.type = 'hidden';
+              input.name = key;
+              input.value = fields[key];
+              form.appendChild(input);
+            }
+          }
+          
+          // Añadir el formulario al iframe y enviarlo
+          iframe.contentDocument.body.appendChild(form);
+          form.submit();
+          
+          // Esperar un tiempo para que se procese la solicitud
+          setTimeout(() => {
+            // Eliminar el iframe
+            document.body.removeChild(iframe);
+            
+            // Asumir que la solicitud fue exitosa
+            isWaitingForResponse = true;
+            
+            // Conectar a SSE si no estamos conectados
+            if (!eventSource || connectionStatus !== 'online') {
+              connectSSE(userId, 'web');
+            }
+          }, 1000);
+        } catch (error) {
+          console.error('Error sending message:', error);
+          hideTypingIndicator();
+          
+          // Mensaje de error detallado
+          let errorDetails = 'Hubo un problema al enviar el mensaje. Es posible que haya problemas de CORS. Asegúrate de que el backend esté configurado correctamente.';
+          
+          addErrorMessage('Error al enviar el mensaje', errorDetails);
+        }
+        
+        // Limpiar textarea
+        elements.textarea.value = '';
+        adjustTextareaHeight();
+      }
+      
+      // Enviar archivo de audio con manejo de CORS
+      async function sendAudioFile(file) {
+        if (!file) return;
+        
+        // Mostrar mensaje del usuario
+        addUserMessage('Audio: ' + file.name, true);
+        
+        // Mostrar indicador de escritura
+        showTypingIndicator();
+        
+        try {
+          // Crear un iframe oculto para evitar problemas de CORS
+          const iframeId = 'audio-iframe-' + Math.random().toString(36).substring(2, 15);
+          const iframe = document.createElement('iframe');
+          iframe.id = iframeId;
+          iframe.style.display = 'none';
+          document.body.appendChild(iframe);
+          
+          // Crear un formulario dentro del iframe
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = widgetConfig.apiUrl;
+          form.enctype = 'multipart/form-data';
+          
+          // Añadir campos al formulario
+          const userIdInput = document.createElement('input');
+          userIdInput.type = 'hidden';
+          userIdInput.name = 'user_id';
+          userIdInput.value = userId;
+          form.appendChild(userIdInput);
+          
+          const channelInput = document.createElement('input');
+          channelInput.type = 'hidden';
+          channelInput.name = 'channel';
+          channelInput.value = 'web';
+          form.appendChild(channelInput);
+          
+          const typeInput = document.createElement('input');
+          typeInput.type = 'hidden';
+          typeInput.name = 'type';
+          typeInput.value = 'audio';
+          form.appendChild(typeInput);
+          
+          // Crear un input de archivo y asignarle el archivo
+          const fileInput = document.createElement('input');
+          fileInput.type = 'file';
+          fileInput.name = 'audio';
+          
+          // Crear un nuevo archivo con el mismo contenido
+          const newFile = new File([file], file.name, {
+            type: file.type,
+            lastModified: file.lastModified
+          });
+          
+          // Crear un DataTransfer para asignar el archivo al input
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(newFile);
+          fileInput.files = dataTransfer.files;
+          
+          form.appendChild(fileInput);
+          
+          // Añadir el formulario al iframe y enviarlo
+          iframe.contentDocument.body.appendChild(form);
+          form.submit();
+          
+          // Esperar un tiempo para que se procese la solicitud
+          setTimeout(() => {
+            // Eliminar el iframe
+            document.body.removeChild(iframe);
+            
+            // Asumir que la solicitud fue exitosa
+            isWaitingForResponse = true;
+            
+            // Conectar a SSE si no estamos conectados
+            if (!eventSource || connectionStatus !== 'online') {
+              connectSSE(userId, 'web');
+            }
+          }, 2000);
+        } catch (error) {
+          console.error('Error sending audio:', error);
+          hideTypingIndicator();
+          
+          // Mensaje de error detallado
+          let errorDetails = 'Hubo un problema al enviar el audio. Es posible que haya problemas de CORS. Asegúrate de que el backend esté configurado correctamente.';
+          
+          addErrorMessage('Error al enviar el audio', errorDetails);
+        }
+      }
+      
+      // Ajustar altura del textarea
+      function adjustTextareaHeight() {
+        elements.textarea.style.height = 'auto';
+        elements.textarea.style.height = (elements.textarea.scrollHeight) + 'px';
+      }
+      
+      // Inicializar widget
+      function initWidget() {
+        // Personalizar título
+        elements.title.textContent = widgetConfig.title;
+        
+        // Detectar y aplicar tema del sitio
+        detectAndApplyTheme();
+        
+        // Mostrar mensaje de bienvenida
+        addBotMessage(widgetConfig.welcomeMessage);
+        
+        // Verificar conexión
+        checkConnection();
+        
+        // Event listeners
+        elements.button.addEventListener('click', () => {
+          elements.window.style.display = 'flex';
+          elements.button.style.display = 'none';
+        });
+        
+        elements.close.addEventListener('click', () => {
+          elements.window.style.display = 'none';
+          elements.button.style.display = 'flex';
+        });
+        
+        elements.send.addEventListener('click', () => {
+          sendTextMessage(elements.textarea.value);
+        });
+        
+        elements.textarea.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendTextMessage(elements.textarea.value);
+          }
+        });
+        
+        elements.textarea.addEventListener('input', adjustTextareaHeight);
+        
+        // Event listeners para grabación de audio
+        elements.mic.addEventListener('click', () => {
+          showAudioRecorder();
+        });
+        
+        elements.audioRecord.addEventListener('click', startRecording);
+        elements.audioStop.addEventListener('click', stopRecording);
+        elements.audioSend.addEventListener('click', sendRecordedAudio);
+        elements.audioCancel.addEventListener('click', closeAudioRecorder);
+        
+        // Event listeners para configuración
+        elements.config.addEventListener('click', (e) => {
+          e.stopPropagation();
+          elements.configPanel.style.display = elements.configPanel.style.display === 'block' ? 'none' : 'block';
+        });
+        
+        elements.configSave.addEventListener('click', saveConfig);
+        elements.configReset.addEventListener('click', resetConfig);
+        
+        // Cerrar panel de configuración al hacer clic fuera
+        document.addEventListener('click', (e) => {
+          if (elements.configPanel.style.display === 'block' && 
+              !elements.configPanel.contains(e.target) && 
+              e.target !== elements.config) {
+            elements.configPanel.style.display = 'none';
+          }
+        });
+        
+        // Inicializar configuración
+        elements.configPrimaryColor.value = widgetConfig.primaryColor;
+        elements.configTitle.value = widgetConfig.title;
+        elements.configWelcome.value = widgetConfig.welcomeMessage;
+      }
+      
+      // Agregar referencia al input de imagen
+      const imageInput = document.getElementById('chat-widget-image-input');
+      const imageButton = document.getElementById('chat-widget-image');
+
+      // Evento para abrir el selector de archivos al hacer clic en el botón de imagen
+      imageButton.addEventListener('click', () => {
+        imageInput.value = '';
+        imageInput.click();
+      });
+
+      // Evento para enviar la imagen seleccionada
+      imageInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          sendImageFile(file);
+        }
+      });
+
+      // Función para enviar la imagen al backend
+      async function sendImageFile(file) {
+        if (!file) return;
+        addUserMessage('Imagen: ' + file.name);
+        showTypingIndicator();
+        try {
+          const iframeId = 'image-iframe-' + Math.random().toString(36).substring(2, 15);
+          const iframe = document.createElement('iframe');
+          iframe.id = iframeId;
+          iframe.style.display = 'none';
+          document.body.appendChild(iframe);
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = widgetConfig.apiUrl;
+          form.enctype = 'multipart/form-data';
+          // Campos ocultos
+          const userIdInput = document.createElement('input');
+          userIdInput.type = 'hidden';
+          userIdInput.name = 'user_id';
+          userIdInput.value = userId;
+          form.appendChild(userIdInput);
+          const channelInput = document.createElement('input');
+          channelInput.type = 'hidden';
+          channelInput.name = 'channel';
+          channelInput.value = 'web';
+          form.appendChild(channelInput);
+          const typeInput = document.createElement('input');
+          typeInput.type = 'hidden';
+          typeInput.name = 'type';
+          typeInput.value = 'image';
+          form.appendChild(typeInput);
+          // Input de archivo
+          const fileInput = document.createElement('input');
+          fileInput.type = 'file';
+          fileInput.name = 'image';
+          const newFile = new File([file], file.name, { type: file.type, lastModified: file.lastModified });
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(newFile);
+          fileInput.files = dataTransfer.files;
+          form.appendChild(fileInput);
+          // Enviar
+          iframe.contentDocument.body.appendChild(form);
+          form.submit();
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+            isWaitingForResponse = true;
+            if (!eventSource || connectionStatus !== 'online') {
+              connectSSE(userId, 'web');
+            }
+          }, 2000);
+        } catch (error) {
+          console.error('Error sending image:', error);
+          hideTypingIndicator();
+          addErrorMessage('Error al enviar la imagen', 'Hubo un problema al enviar la imagen. Es posible que haya problemas de CORS. Asegúrate de que el backend esté configurado correctamente.');
+        }
+      }
+      
+      // Iniciar widget
+      initWidget();
+    })();
+  </script>
+</body>
+</html>
