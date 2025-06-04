@@ -1076,8 +1076,7 @@
           html = html.replace(/<li>(.*?)<\/li>(?:\s*<li>)/g, '<li>$1</li><li>');
           html = html.replace(/(?:<\/li>\s*)<li>(.*?)<\/li>/g, '</li><li>$1</li>');
           html = html.replace(/(?:^|<\/pre>|<\/p>)\s*<li>/g, '$&<ul>');
-          html = html.replace(/<\/li>\s*(?:$|<pre>|<p>)/g, '</ul>$&
-');
+          html = html.replace(/<\/li>\s*(?:$|<pre>|<p>)/g, '</ul>$&');
         }
         
         // Procesar citas
@@ -1216,7 +1215,9 @@
           const sseUrl = `${baseUrl}/webhook/sse/${userId}?channel=${channel}`;
           const script = document.createElement('script');
           script.textContent = `
-            const eventSource = new EventSource("${sseUrl}");
+            const userId = "${userId}";
+            const channel = "${channel}";
+            const eventSource = new EventSource(\`${sseUrl}\`);
             
             eventSource.onopen = function() {
               window.parent.postMessage({type: "sse-open"}, "*");

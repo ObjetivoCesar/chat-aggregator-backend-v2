@@ -51,7 +51,8 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginOpenerPolicy: { policy: "unsafe-none" },
   crossOriginEmbedderPolicy: false,
-  contentSecurityPolicy: false // Deshabilitar CSP temporalmente para pruebas
+  contentSecurityPolicy: false, // Deshabilitar CSP temporalmente para pruebas
+  frameguard: false // Permitir que el backend se cargue en iframes
 }))
 
 // Manejo de preflight (OPTIONS)
