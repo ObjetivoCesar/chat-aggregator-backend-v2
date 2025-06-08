@@ -65,7 +65,7 @@ OPENAI_WHISPER_PROMPT="Transcribe este mensaje de audio con precisión."
 CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name
 
 # Make.com
-MAKE_WEBHOOK_URL=https://hook.make.com/tu-webhook-url-aqui
+MAKE_WEBHOOK_URL=https://hook.us2.make.com/s2syufrq4vmd5no2p17e2kxr1oy6rlcu
 
 # Tokens de plataformas (opcional)
 FB_PAGE_ACCESS_TOKEN=tu-token-facebook
@@ -262,7 +262,7 @@ NODE_ENV=production
 REDIS_URL=redis://tu-redis-url:6379
 OPENAI_API_KEY=sk-tu-clave-openai
 CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name # Necesario para Web Chat Image Upload
-MAKE_WEBHOOK_URL=https://hook.make.com/tu-webhook
+MAKE_WEBHOOK_URL=https://hook.us2.make.com/s2syufrq4vmd5no2p17e2kxr1oy6rlcu
 # Opcional: OPENAI_WHISPER_PROMPT="Transcribe este mensaje..."
 # Opcional: OPENAI_VISION_PROMPT="Eres un asistente..."
 \`\`\`

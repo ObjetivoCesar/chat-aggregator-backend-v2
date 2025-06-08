@@ -21,22 +21,25 @@
     }
 
     #chat-widget-container {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      width: 350px;
-      z-index: 9999;
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      height: 500px;
+      z-index: auto;
       font-family: var(--font-family);
+      display: flex;
+      flex-direction: column;
+      border-radius: var(--border-radius);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      background: var(--bg-color);
+      overflow: hidden;
     }
     
     #chat-widget-window {
-      display: none;
+      display: flex;
       flex-direction: column;
-      height: 500px;
+      height: 100%;
       background: var(--bg-color);
-      border-radius: var(--border-radius);
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      margin-bottom: 10px;
       overflow: hidden;
     }
     
@@ -47,6 +50,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-shrink: 0;
     }
     
     #chat-widget-title { 
@@ -184,18 +188,7 @@
     }
     
     #chat-widget-button {
-      width: 60px;
-      height: 60px;
-      border-radius: var(--button-radius);
-      background: var(--primary-color);
-      color: #fff;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      cursor: pointer;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      align-self: flex-end;
-      font-size: 24px;
+      display: none;
     }
     
     /* Estilos para grabación de audio */
@@ -561,8 +554,8 @@
         textarea: document.getElementById('chat-widget-textarea'),
         send: document.getElementById('chat-widget-send'),
         mic: document.getElementById('chat-widget-mic'),
-        image: document.getElementById('chat-widget-image'), // Añadido para el botón de imagen
-        imageInput: document.getElementById('chat-widget-image-input'), // Añadido para el input de imagen
+        image: document.getElementById('chat-widget-image'),
+        imageInput: document.getElementById('chat-widget-image-input'),
         audioContainer: document.getElementById('chat-widget-audio-container'),
         audioTimer: document.getElementById('chat-widget-audio-timer'),
         audioRecord: document.getElementById('chat-widget-audio-record'),
@@ -1102,6 +1095,10 @@
         msg.innerHTML = processedMessage;
         elements.messages.appendChild(msg);
         elements.messages.scrollTop = elements.messages.scrollHeight;
+        
+        // Guardar conversación después de añadir mensaje
+        saveConversation();
+        
         return msg;
       }
       
@@ -1130,6 +1127,10 @@
         
         elements.messages.appendChild(msg);
         elements.messages.scrollTop = elements.messages.scrollHeight;
+        
+        // Guardar conversación después de añadir mensaje
+        saveConversation();
+        
         return msg;
       }
       
@@ -1140,6 +1141,10 @@
         msg.textContent = message;
         elements.messages.appendChild(msg);
         elements.messages.scrollTop = elements.messages.scrollHeight;
+        
+        // Guardar conversación después de añadir mensaje
+        saveConversation();
+        
         return msg;
       }
       
@@ -1168,6 +1173,10 @@
         
         elements.messages.appendChild(msg);
         elements.messages.scrollTop = elements.messages.scrollHeight;
+        
+        // Guardar conversación después de añadir mensaje
+        saveConversation();
+        
         return msg;
       }
       
@@ -1606,6 +1615,55 @@
         elements.textarea.style.height = (elements.textarea.scrollHeight) + 'px';
       }
       
+      // Guardar conversación en localStorage
+      function saveConversation() {
+        const messages = [];
+        elements.messages.querySelectorAll('.chat-message, .status-message, .error-message').forEach(msgElement => {
+          messages.push({
+            className: msgElement.className,
+            innerHTML: msgElement.innerHTML,
+            textContent: msgElement.textContent // Para mensajes de estado/error sin HTML complejo
+          });
+        });
+        try {
+          localStorage.setItem(`chat_widget_conversation_${userId}`, JSON.stringify(messages));
+        } catch (e) {
+          console.error('Error saving conversation to localStorage:', e);
+        }
+      }
+      
+      // Cargar conversación desde localStorage
+      function loadConversation() {
+        try {
+          const savedConversation = localStorage.getItem(`chat_widget_conversation_${userId}`);
+          if (savedConversation) {
+            const messages = JSON.parse(savedConversation);
+            messages.forEach(msgData => {
+              const msgElement = document.createElement('div');
+              msgElement.className = msgData.className;
+              // Usar innerHTML solo para mensajes bot/usuario que tienen formato Markdown
+              if (msgData.className.includes('bot-message') || msgData.className.includes('user-message')) {
+                 // Regenerar los botones si existen (ya que innerHTML no ejecuta scripts)
+                 // Esto asume que el formato [button:Texto](url) está en el innerHTML
+                 msgElement.innerHTML = processMessageButtons(msgData.innerHTML);
+              } else {
+                 // Para mensajes de estado o error, usar textContent para evitar problemas de seguridad/formato
+                 msgElement.textContent = msgData.textContent;
+              }
+              elements.messages.appendChild(msgElement);
+            });
+            elements.messages.scrollTop = elements.messages.scrollHeight;
+          } else {
+             // Si no hay conversación guardada, mostrar mensaje de bienvenida
+            addBotMessage(widgetConfig.welcomeMessage);
+          }
+        } catch (e) {
+          console.error('Error loading conversation from localStorage:', e);
+           // Si hay un error al cargar, mostrar mensaje de bienvenida
+          addBotMessage(widgetConfig.welcomeMessage);
+        }
+      }
+      
       // Inicializar widget
       function initWidget() {
         // Personalizar título
@@ -1614,8 +1672,8 @@
         // Detectar y aplicar tema del sitio
         detectAndApplyTheme();
         
-        // Mostrar mensaje de bienvenida
-        addBotMessage(widgetConfig.welcomeMessage);
+        // Cargar conversación guardada (si existe)
+        loadConversation();
         
         // Verificar conexión
         checkConnection();
@@ -1633,19 +1691,8 @@
         }, 30000); // Verificar cada 30 segundos
         
         // Event listeners
-        elements.button.addEventListener('click', () => {
-          elements.window.style.display = 'flex';
-          elements.button.style.display = 'none';
-          
-          // Asegurar que la conexión SSE esté activa cuando se abre el widget
-          if (!eventSource || connectionStatus !== 'online') {
-            connectSSE(userId, 'web');
-          }
-        });
-        
         elements.close.addEventListener('click', () => {
-          elements.window.style.display = 'none';
-          elements.button.style.display = 'flex';
+          console.log('Close button clicked. In embedded mode, this button might be removed or repurposed.');
         });
         
         elements.send.addEventListener('click', () => {
